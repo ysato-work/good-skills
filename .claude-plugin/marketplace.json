@@ -1,0 +1,15 @@
+{
+  "name": "kiai",
+  "description": "kiai のプラグイン置き場",
+  "version": "0.1.0",
+  "owner": {
+    "name": "kiai",
+    "email": "t@ultra-kiai.work"
+  },
+  "plugins": [
+    {
+      "name": "wakaranai",
+      "source": "./wakaranai"
+    }
+  ]
+}

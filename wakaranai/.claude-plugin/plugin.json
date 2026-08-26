@@ -1,0 +1,9 @@
+{
+  "name": "wakaranai",
+  "description": "人間のメッセージにローマ字の 'wakaranai' が含まれるとき、直前の assistant 発話を人間が理解できる形に組み直して出し直すスキル",
+  "version": "0.1.0",
+  "author": {
+    "name": "kiai",
+    "email": "t@ultra-kiai.work"
+  }
+}
