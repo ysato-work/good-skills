@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# PreToolUse / Stop hook — テストの完走ゲート
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+exec node "${PLUGIN_ROOT}/lib/spec-testing/completion-hook.mjs" "${1:-verify}"
