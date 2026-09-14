@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Stop hook — セルフレビュー記録の検証
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+exec node "${PLUGIN_ROOT}/lib/gate-hook.mjs" verify

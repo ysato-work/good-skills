@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# PostToolUse hook — spec / plan への書き込みをセッション台帳に記録する
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+payload="$(cat)"
+case "$payload" in
+  *docs/superpowers/specs*|*docs/superpowers/plans*) ;;
+  *) exit 0 ;;
+esac
+
+printf '%s' "$payload" | exec node "${PLUGIN_ROOT}/lib/gate-hook.mjs" record

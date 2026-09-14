@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# PreToolUse hook — テスト実行中の禁止操作をブロックする
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+exec node "${PLUGIN_ROOT}/lib/spec-testing/guard-hook.mjs" check

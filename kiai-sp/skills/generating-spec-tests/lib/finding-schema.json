@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["axis", "case_id", "problem", "suggestion"],
+    "additionalProperties": false,
+    "properties": {
+      "axis": {
+        "enum": ["feasibility", "validity", "coverage", "box", "out-of-scope"]
+      },
+      "case_id": { "type": "string" },
+      "problem": { "type": "string", "minLength": 1 },
+      "suggestion": { "type": "string", "minLength": 1 }
+    }
+  }
+}

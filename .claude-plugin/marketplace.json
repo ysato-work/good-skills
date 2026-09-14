@@ -10,6 +10,10 @@
     {
       "name": "wakaranai",
       "source": "./wakaranai"
+    },
+    {
+      "name": "kiai-sp",
+      "source": "./kiai-sp"
     }
   ]
 }
