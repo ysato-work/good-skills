@@ -1,6 +1,6 @@
 {
   "name": "wakaranai",
-  "description": "人間のメッセージにローマ字の 'wakaranai' という語が含まれるときのみ発動する。直前の assistant 発話を人間が理解できる形に組み替えて出し直す。日本語同義語（わからない・分からない・不明など）では発動しない。",
+  "description": "人間がローマ字一語で呼ぶスキル集。'wakaranai' は直前の assistant 発話を理解できる形に組み替えて出し直す。'kimoi' は直前の assistant 発話のキモさを取り除いて出し直す。どちらも日本語表記の同義語（わからない・キモい等）では発動しない。",
   "version": "0.1.0",
   "author": {
     "name": "kiai",
