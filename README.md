@@ -4,9 +4,12 @@ Claude Code プラグインマーケットプレイス。
 
 ## 収録プラグイン
 
-| プラグイン | 用途 |
-| --- | --- |
-| `wakaranai` | 人間の発話にローマ字 `wakaranai` が含まれたとき、直前の assistant 発話を人間が理解できる形に組み直して出し直す |
+| プラグイン | スキル | 用途 |
+| --- | --- | --- |
+| `wakaranai` | `wakaranai` | 人間の発話にローマ字 `wakaranai` が含まれたとき、直前の assistant 発話を人間が理解できる形に組み直して出し直す |
+| `wakaranai` | `kimoi` | 人間の発話にローマ字 `kimoi` が含まれたとき、直前の assistant 発話のキモさを取り除いて出し直す |
+| `kiai-sp` | | superpowers の個人フォーク。TDD・デバッグ・計画立案・コードレビューの進め方をまとめたスキル群 |
+| `pull-request` | `pr-description` | PR の説明文と diff への行コメントを書いて投稿する。AI が書いたとわかる文面を、スクリプトの検出とセルフレビューで抑える |
 
 ## インストール
 
@@ -41,7 +44,8 @@ good-skills/
 ├── .claude-plugin/marketplace.json   # マーケットプレイス宣言
 └── <plugin-name>/
     ├── .claude-plugin/plugin.json
-    └── skills/<skill-name>/SKILL.md
+    ├── skills/<skill-name>/SKILL.md
+    └── agents/<skill-name>/*.md      # サブエージェントを使うプラグインのみ
 ```
 
 1 プラグイン = 1 ディレクトリ。新しいプラグインを追加するときは同じ階層にディレクトリを作り、`marketplace.json` の `plugins` 配列に `{name, source}` を追記する。
