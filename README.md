@@ -7,7 +7,7 @@ Claude Code プラグインマーケットプレイス。
 | プラグイン | スキル | 用途 |
 | --- | --- | --- |
 | `wakaranai` | `wakaranai` | 人間の発話にローマ字 `wakaranai` が含まれたとき、直前の assistant 発話を人間が理解できる形に組み直して出し直す |
-| `wakaranai` | `kimoi` | 人間の発話にローマ字 `kimoi` が含まれたとき、直前の assistant 発話のキモさを取り除いて出し直す |
+| `wakaranai` | `kimoi` | 人間の発話にローマ字 `kimoi` が含まれたとき、直前の assistant 発話のキモさを取り除いて出し直す。ローマ字 `sangyo` でも発動し、そのときは 3 行以内で出し直す |
 | `kiai-sp` | | superpowers の個人フォーク。TDD・デバッグ・計画立案・コードレビューの進め方をまとめたスキル群 |
 | `pull-request` | `pr-description` | PR の説明文と diff への行コメントを書いて投稿する。AI が書いたとわかる文面を、スクリプトの検出とセルフレビューで抑える |
 
