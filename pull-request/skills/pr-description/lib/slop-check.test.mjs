@@ -2,7 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import {
   loadPolicy,
   extractOpenPart,
@@ -20,6 +22,7 @@ import {
   collectParens,
   checkBodySections,
   checkTitle,
+  checkGeneratedFileComments,
 } from "./slop-check.mjs";
 import { classifyRule, RULE_KINDS } from "./slop-check.mjs";
 
@@ -543,20 +546,137 @@ test("変更のサマリーがあれば必須違反にならない", () => {
   assert.ok(!v.some((x) => x.rule === "必須detailsタイトル"));
 });
 
-test("任意枠が 3 個あると違反になる", () => {
-  const extra = (title) =>
-    ["<details>", `<summary>${title}</summary>`, "", "ここに書いた方がよいと判断した事情を十分な長さで書く。", "", "</details>"].join("\n");
-  const body = ["主眼の文。", "", summaryBlock(), extra("事情A"), extra("事情B"), extra("事情C")].join("\n");
-  const v = checkBodySections(body, POLICY);
+function freeBlock(title, inner) {
+  return ["<details>", `<summary>${title}</summary>`, "", inner, "", "</details>"].join("\n");
+}
+function freeBody(...blocks) {
+  return ["主眼の文。", "", summaryBlock(), ...blocks].join("\n");
+}
+const BLOCK_NEWLINE_BYTES = 5;
+function sized(bytes, wide = false) {
+  const n = bytes - BLOCK_NEWLINE_BYTES;
+  return wide ? "あ".repeat(Math.floor(n / 3)) + "a".repeat(n % 3) : "a".repeat(n);
+}
+const SHORT = "ここに書いた方がよいと判断した事情を十分な長さで書く。";
+const rulesOf = (body) => checkBodySections(body, POLICY).map((x) => x.rule);
+
+test("任意枠が 2 個あると個数違反になる", () => {
+  assert.ok(rulesOf(freeBody(freeBlock("事情A", SHORT), freeBlock("事情B", SHORT))).includes("任意枠の最大個数"));
+});
+
+test("任意枠が 1 個なら個数違反にならない", () => {
+  assert.ok(!rulesOf(freeBody(freeBlock("事情A", SHORT))).includes("任意枠の最大個数"));
+});
+
+test("任意枠が 0 個でも個数違反にならない", () => {
+  assert.ok(!rulesOf(freeBody()).includes("任意枠の最大個数"));
+});
+
+test("任意枠が 3 個でも個数違反になる", () => {
+  const b = freeBody(freeBlock("事情A", SHORT), freeBlock("事情B", SHORT), freeBlock("事情C", SHORT));
+  assert.ok(rulesOf(b).includes("任意枠の最大個数"));
+});
+
+test("予約タイトルを足しても任意枠 1 個なら個数違反にならない", () => {
+  const b = freeBody(freeBlock("ドキュメント", SHORT), freeBlock("テスト", SHORT), freeBlock("概要", SHORT), freeBlock("事情A", SHORT));
+  assert.ok(!rulesOf(b).includes("任意枠の最大個数"));
+});
+
+test("予約タイトルを数えず任意枠 2 個だけで個数違反になる", () => {
+  const b = freeBody(
+    freeBlock("ドキュメント", SHORT), freeBlock("テスト", SHORT), freeBlock("概要", SHORT),
+    freeBlock("事情A", SHORT), freeBlock("事情B", SHORT),
+  );
+  assert.ok(rulesOf(b).includes("任意枠の最大個数"));
+});
+
+test("任意枠が 376 バイトだと任意枠のバイト数違反だけが出る", () => {
+  const r = rulesOf(freeBody(freeBlock("事情A", sized(376))));
+  assert.ok(r.includes("任意枠の最大バイト数"));
+  assert.ok(!r.includes("detailsの中身の最大バイト数"));
+});
+
+test("任意枠が 375 バイトちょうどなら違反にならない", () => {
+  assert.ok(!rulesOf(freeBody(freeBlock("事情A", sized(375)))).includes("任意枠の最大バイト数"));
+});
+
+test("任意枠が 374 バイトなら違反にならない", () => {
+  assert.ok(!rulesOf(freeBody(freeBlock("事情A", sized(374)))).includes("任意枠の最大バイト数"));
+});
+
+test("任意枠のバイト数は UTF-8 で数える（全角まじりで 125 文字でも 376 バイトで超える）", () => {
+  assert.ok(rulesOf(freeBody(freeBlock("事情A", sized(376, true)))).includes("任意枠の最大バイト数"));
+});
+
+test("任意枠が全角でちょうど 375 バイトなら違反にならない", () => {
+  assert.ok(!rulesOf(freeBody(freeBlock("事情A", sized(375, true)))).includes("任意枠の最大バイト数"));
+});
+
+test("任意枠が 753 バイトでも任意枠のバイト数違反だけが出る", () => {
+  const r = rulesOf(freeBody(freeBlock("事情A", sized(753))));
+  assert.ok(r.includes("任意枠の最大バイト数"));
+  assert.ok(!r.includes("detailsの中身の最大バイト数"));
+});
+
+test("任意枠のバイト数違反の detail は題名・バイト数・上限を含む", () => {
+  const v = checkBodySections(freeBody(freeBlock("事情A", sized(376))), POLICY);
+  const hit = v.find((x) => x.rule === "任意枠の最大バイト数");
+  assert.ok(hit, "任意枠の最大バイト数 の違反が出ていない");
+  assert.strictEqual(hit.detail, '"事情A" が 376 バイト。上限は 375 バイト');
+});
+
+test("任意枠が 2 個とも長いと、バイト数違反が枠ごとに出て個数違反も出る", () => {
+  const v = checkBodySections(freeBody(freeBlock("事情A", sized(376)), freeBlock("事情B", sized(376))), POLICY);
+  const hits = v.filter((x) => x.rule === "任意枠の最大バイト数");
+  assert.strictEqual(hits.length, 2);
+  assert.ok(hits.some((x) => x.detail.includes('"事情A"')));
+  assert.ok(hits.some((x) => x.detail.includes('"事情B"')));
   assert.ok(v.some((x) => x.rule === "任意枠の最大個数"));
 });
 
-test("任意枠が 2 個なら個数違反にならない", () => {
-  const extra = (title) =>
-    ["<details>", `<summary>${title}</summary>`, "", "ここに書いた方がよいと判断した事情を十分な長さで書く。", "", "</details>"].join("\n");
-  const body = ["主眼の文。", "", summaryBlock(), extra("事情A"), extra("事情B")].join("\n");
-  const v = checkBodySections(body, POLICY);
-  assert.ok(!v.some((x) => x.rule === "任意枠の最大個数"));
+test("変更のサマリーは 376 バイトでも 750 バイトちょうどでも上限違反が出ない", () => {
+  for (const n of [376, 750]) {
+    const b = ["主眼の文。", "", freeBlock("変更のサマリー", sized(n))].join("\n");
+    const r = rulesOf(b);
+    assert.ok(!r.includes("任意枠の最大バイト数"), `${n} バイト`);
+    assert.ok(!r.includes("detailsの中身の最大バイト数"), `${n} バイト`);
+  }
+});
+
+test("変更のサマリーが 751 バイトだと共通の上限違反だけが出る", () => {
+  const r = rulesOf(["主眼の文。", "", freeBlock("変更のサマリー", sized(751))].join("\n"));
+  assert.ok(r.includes("detailsの中身の最大バイト数"));
+  assert.ok(!r.includes("任意枠の最大バイト数"));
+});
+
+test("テストの枠は 376〜750 バイトでも上限違反が出ない", () => {
+  for (const n of [376, 750]) {
+    const r = rulesOf(freeBody(freeBlock("テスト", sized(n))));
+    assert.ok(!r.includes("任意枠の最大バイト数"), `${n} バイト`);
+    assert.ok(!r.includes("detailsの中身の最大バイト数"), `${n} バイト`);
+    assert.ok(!r.includes("任意枠の最大個数"), `${n} バイト`);
+  }
+});
+
+test("テストの枠が 751 バイトだと共通の上限違反だけが出る", () => {
+  const r = rulesOf(freeBody(freeBlock("テスト", sized(751))));
+  assert.ok(r.includes("detailsの中身の最大バイト数"));
+  assert.ok(!r.includes("任意枠の最大バイト数"));
+});
+
+test("方針の値は任意枠 1 個・375 バイト", () => {
+  assert.strictEqual(POLICY["任意枠の最大個数"], 1);
+  assert.strictEqual(POLICY["任意枠の最大バイト数"], 375);
+});
+
+test("checkAll を通しても任意枠の 2 つの違反が骨格で出る", () => {
+  const body = freeBody(freeBlock("事情A", sized(376)), freeBlock("事情B", SHORT));
+  const { violations } = checkAll({ body }, POLICY);
+  for (const rule of ["任意枠の最大個数", "任意枠の最大バイト数"]) {
+    const hit = violations.find((v) => v.rule === rule);
+    assert.ok(hit, `${rule} が出ていない`);
+    assert.strictEqual(hit.kind, "骨格");
+  }
 });
 
 test("予約タイトルは任意枠の個数に数えない", () => {
@@ -566,7 +686,7 @@ test("予約タイトルは任意枠の個数に数えない", () => {
     "主眼の文。",
     "",
     summaryBlock(),
-    block("ドキュメント", "https://github.com/kiai-work/dot-claude/issues/91 を辿る。"),
+    block("ドキュメント", "https://github.com/example-org/example-repo/issues/91 を辿る。"),
     block("テスト", ["- テストしたこと", "  - リトライ上限で止まること", "- テストしてないこと", "  - 他スキルからの呼び出し"].join("\n")),
     block("概要", "主眼が三つあるので畳んだ文をここへ書く。"),
   ].join("\n");
@@ -726,11 +846,12 @@ test("変更のサマリーが 750 バイトを超えると違反になる", () 
   assert.ok(v.some((x) => x.rule === "detailsの中身の最大バイト数"));
 });
 
-test("任意枠が 750 バイトを超えると違反になる", () => {
+test("任意枠が 750 バイトを超えると任意枠のバイト数違反になる", () => {
   const pad = "あ".repeat(251);
   const body = ["主眼の文。", "", summaryBlock(), "<details>", "<summary>事情A</summary>", "", pad, "", "</details>"].join("\n");
   const v = checkBodySections(body, POLICY);
-  assert.ok(v.some((x) => x.rule === "detailsの中身の最大バイト数"));
+  assert.ok(v.some((x) => x.rule === "任意枠の最大バイト数"));
+  assert.ok(!v.some((x) => x.rule === "detailsの中身の最大バイト数"));
 });
 
 test("ドキュメントは 750 バイトを超えても違反にならない", () => {
@@ -846,7 +967,9 @@ test("分類は装飾・骨格・言い換えの 3 つ", () => {
   assert.strictEqual(classifyRule("禁止detailsタイトル"), "骨格");
   assert.strictEqual(classifyRule("禁止語"), "言い換え");
   assert.strictEqual(classifyRule("展開部分の最大文数"), "言い換え");
-  assert.strictEqual(classifyRule("任意枠の最大個数"), "言い換え");
+  assert.strictEqual(classifyRule("任意枠の最大個数"), "骨格");
+  assert.strictEqual(classifyRule("任意枠の最大バイト数"), "骨格");
+  assert.strictEqual(classifyRule("detailsの中身の最大バイト数"), "言い換え");
 });
 
 test("分類されていないルールは throw する", () => {
@@ -1232,4 +1355,242 @@ test("checkAll は details の丸括弧を parens に載せ違反にしない", 
 
 test("展開部分に丸括弧を禁止の分類は言い換え", () => {
   assert.strictEqual(classifyRule("展開部分に丸括弧を禁止"), "言い換え");
+});
+
+// ---- 生成ファイルへの行コメント ----
+
+const GEN_RULE = "生成ファイルへの行コメント";
+const gc = (path, line, numbered, text) => ({ path, line, numbered, text });
+
+test("G01 番号コメントが生成ファイルに付くと違反 1 件になり detail にパスと行番号が入る", () => {
+  const v = checkGeneratedFileComments([gc("yarn.lock", 3, true, "1: 依存を更新")], ["yarn.lock"]);
+  assert.deepStrictEqual(v, [
+    { rule: GEN_RULE, detail: "yarn.lock:3 に付いている。生成ファイルには行コメントを付けない" },
+  ]);
+});
+
+test("G02 意図コメントが生成ファイルに付いても違反 1 件になる", () => {
+  const v = checkGeneratedFileComments([gc("yarn.lock", 3, false, "依存を更新した理由")], ["yarn.lock"]);
+  assert.strictEqual(v.length, 1);
+  assert.strictEqual(v[0].rule, GEN_RULE);
+  assert.ok(v[0].detail.includes("yarn.lock:3"), v[0].detail);
+});
+
+test("G03 生成ファイルでないファイルへのコメントは違反にならない", () => {
+  assert.deepStrictEqual(
+    checkGeneratedFileComments([gc("src/a.js", 10, true, "1: 関数を足す")], ["yarn.lock"]),
+    [],
+  );
+});
+
+test("G04 生成ファイル一覧が空なら違反にならない", () => {
+  assert.deepStrictEqual(checkGeneratedFileComments([gc("yarn.lock", 3, true, "1: x")], []), []);
+});
+
+test("G05 一覧のパスの後ろに文字が付いたパスは違反にならない", () => {
+  assert.deepStrictEqual(checkGeneratedFileComments([gc("yarn.lock.bak", 1, true, "1: x")], ["yarn.lock"]), []);
+});
+
+test("G06 一覧のパスの前にディレクトリが付いたパスは違反にならない（完全一致のみ）", () => {
+  assert.deepStrictEqual(checkGeneratedFileComments([gc("sub/yarn.lock", 1, true, "1: x")], ["yarn.lock"]), []);
+});
+
+test("G07 一覧側のパスがより長い場合は違反にならない", () => {
+  assert.deepStrictEqual(checkGeneratedFileComments([gc("yarn.lock", 1, true, "1: x")], ["sub/yarn.lock"]), []);
+});
+
+test("G08 大文字小文字が違うパスは違反にならない（完全一致のみ）", () => {
+  assert.deepStrictEqual(checkGeneratedFileComments([gc("Yarn.lock", 1, false, "x")], ["yarn.lock"]), []);
+});
+
+test("G09 生成ファイル 2 件と通常 1 件のコメントから違反 2 件が出る", () => {
+  const v = checkGeneratedFileComments(
+    [gc("yarn.lock", 3, true, "1: a"), gc("src/a.js", 5, true, "2: b"), gc("dist/app.js", 7, false, "c")],
+    ["yarn.lock", "dist/app.js"],
+  );
+  assert.strictEqual(v.length, 2);
+  assert.ok(v.some((x) => x.detail.includes("yarn.lock:3")));
+  assert.ok(v.some((x) => x.detail.includes("dist/app.js:7")));
+  assert.ok(!v.some((x) => x.detail.includes("src/a.js")));
+});
+
+test("G10 同じ生成ファイルへの複数コメントは 1 件ずつ違反になる", () => {
+  const v = checkGeneratedFileComments(
+    [gc("yarn.lock", 3, true, "1: a"), gc("yarn.lock", 9, false, "b")],
+    ["yarn.lock"],
+  );
+  assert.strictEqual(v.length, 2);
+  assert.ok(v.some((x) => x.detail.includes("yarn.lock:3")));
+  assert.ok(v.some((x) => x.detail.includes("yarn.lock:9")));
+});
+
+test("G11 コメントが空配列なら違反にならない", () => {
+  assert.deepStrictEqual(checkGeneratedFileComments([], ["yarn.lock"]), []);
+});
+
+test("G12 一覧に複数のファイルがあるとき該当するものだけ違反になる", () => {
+  const v = checkGeneratedFileComments([gc("b.gen.ts", 2, true, "1: x")], ["a.gen.ts", "b.gen.ts", "c.gen.ts"]);
+  assert.strictEqual(v.length, 1);
+  assert.ok(v[0].detail.includes("b.gen.ts:2"), v[0].detail);
+});
+
+test("G13 生成ファイルへの行コメントは骨格に分類される", () => {
+  assert.strictEqual(classifyRule(GEN_RULE), "骨格");
+});
+
+test("G14 RULE_KINDS に生成ファイルへの行コメントが骨格で登録されている", () => {
+  assert.strictEqual(RULE_KINDS[GEN_RULE], "骨格");
+});
+
+test("G15 checkAll は生成ファイルへのコメントを骨格の違反として返す", () => {
+  const { violations } = checkAll(
+    { body: "問題のない本文", lineComments: [gc("yarn.lock", 3, true, "1: 依存を更新")], generatedFiles: ["yarn.lock"] },
+    POLICY,
+  );
+  const hits = violations.filter((v) => v.rule === GEN_RULE);
+  assert.strictEqual(hits.length, 1);
+  assert.strictEqual(hits[0].kind, "骨格");
+});
+
+test("G16 checkAll は生成ファイルでないファイルへのコメントを違反にしない", () => {
+  const { violations } = checkAll(
+    { body: "問題のない本文", lineComments: [gc("src/a.js", 3, true, "1: 依存を更新")], generatedFiles: ["yarn.lock"] },
+    POLICY,
+  );
+  assert.ok(!violations.some((v) => v.rule === GEN_RULE));
+});
+
+test("G17 checkAll は generatedFiles を省略しても例外を投げず新ルールの違反も出さない", () => {
+  const { violations } = checkAll(
+    { body: "問題のない本文", lineComments: [gc("yarn.lock", 3, true, "1: 依存を更新")] },
+    POLICY,
+  );
+  assert.ok(!violations.some((v) => v.rule === GEN_RULE));
+});
+
+test("G18 checkAll は generatedFiles が空配列なら新ルールの違反を出さない", () => {
+  const { violations } = checkAll(
+    { body: "問題のない本文", lineComments: [gc("yarn.lock", 3, true, "1: 依存を更新")], generatedFiles: [] },
+    POLICY,
+  );
+  assert.ok(!violations.some((v) => v.rule === GEN_RULE));
+});
+
+test("G19 checkAll は lineComments を省略して generatedFiles だけ渡しても例外を投げない", () => {
+  const { violations } = checkAll({ body: "問題のない本文", generatedFiles: ["yarn.lock"] }, POLICY);
+  assert.ok(!violations.some((v) => v.rule === GEN_RULE));
+});
+
+test("G20 checkAll は既存ルールの違反と新ルールの違反を併せて返す", () => {
+  const { violations } = checkAll(
+    { body: "大幅に改善しました。", lineComments: [gc("yarn.lock", 3, true, "1: 依存を更新")], generatedFiles: ["yarn.lock"] },
+    POLICY,
+  );
+  assert.ok(violations.some((v) => v.rule === "禁止語"));
+  const hit = violations.find((v) => v.rule === GEN_RULE);
+  assert.ok(hit, "生成ファイルへの行コメントの違反が出ていない");
+  assert.strictEqual(hit.kind, "骨格");
+});
+
+// CLI。generated を省略すると --generated-file を渡さない。
+// raw を渡すとその文字列をそのまま一覧ファイルに書く。trailingFlag は値なしの --generated-file を末尾に置く。
+const CLI_PATH = join(dirname(fileURLToPath(import.meta.url)), "slop-check.mjs");
+const POLICY_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "policy", "slop.json");
+
+function cliArgs({ comments, generated, raw, missingPath, trailingFlag }) {
+  const dir = mkdtempSync(join(tmpdir(), "slop-check-"));
+  const bodyFile = join(dir, "body.md");
+  const commentsFile = join(dir, "line-comments.json");
+  writeFileSync(bodyFile, "問題のない本文");
+  writeFileSync(commentsFile, JSON.stringify(comments));
+  const args = [CLI_PATH, "--body-file", bodyFile, "--comments-file", commentsFile, "--policy", POLICY_PATH];
+  if (missingPath) {
+    args.push("--generated-file", join(dir, "no-such-file.json"));
+  } else if (raw !== undefined || generated !== undefined) {
+    const generatedFile = join(dir, "generated-files.json");
+    writeFileSync(generatedFile, raw !== undefined ? raw : JSON.stringify(generated));
+    args.push("--generated-file", generatedFile);
+  }
+  if (trailingFlag) args.push("--generated-file");
+  return args;
+}
+
+const runCli = (opts) =>
+  execFileSync(process.execPath, cliArgs(opts), { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+
+// 終了コードを問わずに標準出力の JSON を取る
+function cliJson(opts) {
+  let stdout;
+  try {
+    stdout = runCli(opts);
+  } catch (err) {
+    stdout = err.stdout;
+  }
+  return JSON.parse(stdout);
+}
+
+function assertCliFails(opts) {
+  assert.throws(
+    () => runCli(opts),
+    (err) => {
+      assert.strictEqual(err.status, 1);
+      assert.ok(String(err.stderr).trim().length > 0, "標準エラーに理由が出ていない");
+      return true;
+    },
+  );
+}
+
+const YARN_COMMENT = [gc("yarn.lock", 3, true, "1: 依存を更新")];
+
+test("G21 CLI: 一覧に載ったファイルへのコメントが骨格の違反として出力される", () => {
+  const { violations } = cliJson({ comments: YARN_COMMENT, generated: ["yarn.lock"] });
+  const hit = violations.find((v) => v.rule === GEN_RULE);
+  assert.ok(hit, "生成ファイルへの行コメントの違反が出ていない");
+  assert.strictEqual(hit.kind, "骨格");
+});
+
+test("G22 CLI: 一覧が空配列ならエラー終了せず新ルールの違反も出ない", () => {
+  const out = runCli({ comments: YARN_COMMENT, generated: [] });
+  assert.ok(!JSON.parse(out).violations.some((v) => v.rule === GEN_RULE));
+});
+
+test("G23 CLI: 一覧に載っていないファイルへのコメントは違反にならない", () => {
+  const { violations } = cliJson({ comments: [gc("src/a.js", 3, true, "1: 依存を更新")], generated: ["yarn.lock"] });
+  assert.ok(!violations.some((v) => v.rule === GEN_RULE));
+});
+
+test("G24 CLI: --generated-file を渡さないと終了コード 1 で理由を出す", () => {
+  assertCliFails({ comments: YARN_COMMENT });
+});
+
+test("G25 CLI: --generated-file のファイルが存在しないと終了コード 1 で理由を出す", () => {
+  assertCliFails({ comments: YARN_COMMENT, missingPath: true });
+});
+
+test("G26 CLI: 一覧が JSON のオブジェクトだと終了コード 1 で理由を出す", () => {
+  assertCliFails({ comments: YARN_COMMENT, raw: '{"a":1}' });
+});
+
+test("G27 CLI: 一覧が JSON の文字列だと終了コード 1 で理由を出す", () => {
+  assertCliFails({ comments: YARN_COMMENT, raw: '"yarn.lock"' });
+});
+
+test("G28 CLI: 一覧の要素が数値だと終了コード 1 で理由を出す", () => {
+  assertCliFails({ comments: YARN_COMMENT, raw: "[1]" });
+});
+
+test("G29 CLI: 一覧に文字列以外が混ざると終了コード 1 で理由を出す", () => {
+  assertCliFails({ comments: YARN_COMMENT, raw: '["yarn.lock", null]' });
+});
+
+test("G30 CLI: 一覧が JSON として壊れていると終了コード 1 で理由を出す", () => {
+  assertCliFails({ comments: YARN_COMMENT, raw: '[ "yarn.lock"' });
+});
+
+test("G31 CLI: 一覧ファイルが空だと終了コード 1 で理由を出す", () => {
+  assertCliFails({ comments: YARN_COMMENT, raw: "" });
+});
+
+test("G32 CLI: --generated-file の値が欠けていると終了コード 1 で理由を出す", () => {
+  assertCliFails({ comments: YARN_COMMENT, trailingFlag: true });
 });

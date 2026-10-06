@@ -343,6 +343,7 @@ export function checkBodySections(body, policy) {
   const maxL1 = policy["1段階目の最大バイト数"];
   const maxBytes = policy["detailsの中身の最大バイト数"];
   const maxExtra = policy["任意枠の最大個数"];
+  const maxExtraBytes = policy["任意枠の最大バイト数"];
   const violations = [];
   const blocks = iterDetails(body);
 
@@ -371,13 +372,22 @@ export function checkBodySections(body, policy) {
     }
 
     const isExtra = b.title !== "" && !reserved.has(b.title);
-    const cap = structured.has(b.title) || isExtra;
-    if (cap && typeof maxBytes === "number") {
+    if (structured.has(b.title) && typeof maxBytes === "number") {
       const n = Buffer.byteLength(b.content, "utf8");
       if (n > maxBytes) {
         violations.push({
           rule: "detailsの中身の最大バイト数",
           detail: `"${b.title}" が ${n} バイト。上限は ${maxBytes} バイト`,
+        });
+      }
+    }
+    // 任意枠は共通の上限に掛けない。掛けると長すぎる任意枠に軽い違反と重い違反が二重に出る。
+    if (isExtra && typeof maxExtraBytes === "number") {
+      const n = Buffer.byteLength(b.content, "utf8");
+      if (n > maxExtraBytes) {
+        violations.push({
+          rule: "任意枠の最大バイト数",
+          detail: `"${b.title}" が ${n} バイト。上限は ${maxExtraBytes} バイト`,
         });
       }
     }
@@ -448,6 +458,16 @@ export function checkLineComments(comments, policy) {
   return violations;
 }
 
+export function checkGeneratedFileComments(comments, generatedFiles) {
+  const generated = new Set(generatedFiles);
+  return comments
+    .filter((c) => typeof c === "object" && generated.has(c?.path))
+    .map((c) => ({
+      rule: "生成ファイルへの行コメント",
+      detail: `${c.path}:${c.line} に付いている。生成ファイルには行コメントを付けない`,
+    }));
+}
+
 export function checkTitle(title, policy) {
   const violations = [];
   violations.push(...checkVocabulary(title, policy));
@@ -477,6 +497,9 @@ export const RULE_KINDS = {
   "1段階目に2段階目が無い": "骨格",
   "禁止detailsタイトル": "骨格",
   "禁止表現": "骨格",
+  "生成ファイルへの行コメント": "骨格",
+  "任意枠の最大個数": "骨格",
+  "任意枠の最大バイト数": "骨格",
   "禁止語": "言い換え",
   "展開部分の最大文数": "言い換え",
   "展開部分に箇条書きを禁止": "言い換え",
@@ -486,7 +509,6 @@ export const RULE_KINDS = {
   "detailsの中身の最大バイト数": "言い換え",
   "1段階目の最大バイト数": "言い換え",
   "構造化箇条書きの段": "言い換え",
-  "任意枠の最大個数": "言い換え",
   "番号コメントは1行": "言い換え",
   "PRタイトルの最大文字数": "言い換え",
 };
@@ -500,7 +522,7 @@ export function classifyRule(rule) {
   return kind;
 }
 
-export function checkAll({ body, lineComments = [], title }, policy) {
+export function checkAll({ body, lineComments = [], title, generatedFiles = [] }, policy) {
   const violations = [
     ...checkStructure(body, policy),
     ...checkVocabulary(body, policy),
@@ -508,6 +530,7 @@ export function checkAll({ body, lineComments = [], title }, policy) {
     ...checkDetails(body, policy),
     ...checkBodySections(body, policy),
     ...checkLineComments(lineComments, policy),
+    ...checkGeneratedFileComments(lineComments, generatedFiles),
   ];
   for (const c of lineComments) {
     violations.push(...checkVocabulary(commentText(c), policy));
@@ -528,18 +551,37 @@ function argValue(argv, name) {
   return i === -1 ? undefined : argv[i + 1];
 }
 
+function readGeneratedFiles(path) {
+  if (!path) throw new Error("--generated-file が無い");
+  const parsed = JSON.parse(readFileSync(path, "utf8"));
+  if (!Array.isArray(parsed) || !parsed.every((p) => typeof p === "string")) {
+    throw new Error(`${path} が文字列の配列でない`);
+  }
+  return parsed;
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const argv = process.argv.slice(2);
   const bodyFile = argValue(argv, "--body-file");
   const policyPath = argValue(argv, "--policy");
   if (!bodyFile || !policyPath) {
-    console.error("usage: slop-check.mjs --body-file <path> [--comments-file <path>] [--title-file <path>] --policy <path>");
+    console.error("usage: slop-check.mjs --body-file <path> [--comments-file <path>] [--title-file <path>] --generated-file <path> --policy <path>");
+    process.exit(1);
+  }
+  let generatedFiles;
+  try {
+    generatedFiles = readGeneratedFiles(argValue(argv, "--generated-file"));
+  } catch (e) {
+    console.error(`slop-check: 生成ファイル一覧を読めない: ${e.message}`);
     process.exit(1);
   }
   const commentsFile = argValue(argv, "--comments-file");
   const titleFile = argValue(argv, "--title-file");
   const lineComments = commentsFile ? JSON.parse(readFileSync(commentsFile, "utf8")) : [];
   const title = titleFile ? readFileSync(titleFile, "utf8").trim() : undefined;
-  const result = checkAll({ body: readFileSync(bodyFile, "utf8"), lineComments, title }, loadPolicy(policyPath));
+  const result = checkAll(
+    { body: readFileSync(bodyFile, "utf8"), lineComments, title, generatedFiles },
+    loadPolicy(policyPath),
+  );
   console.log(JSON.stringify(result));
 }
