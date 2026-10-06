@@ -38,6 +38,7 @@ node <SKILL_DIR>/lib/strip-decoration.mjs \
 node <SKILL_DIR>/lib/slop-check.mjs \
   --body-file <WORKDIR>/body.md \
   --comments-file <WORKDIR>/line-comments.json \
+  --generated-file <WORKDIR>/generated-files.json \
   --policy <SKILL_DIR>/policy/slop.json \
   > <WORKDIR>/ledger/<実行 ID>/slop-iter-<N>.json
 
@@ -46,6 +47,7 @@ node <SKILL_DIR>/lib/slop-check.mjs \
   --body-file <WORKDIR>/body.md \
   --comments-file <WORKDIR>/line-comments.json \
   --title-file <WORKDIR>/title.txt \
+  --generated-file <WORKDIR>/generated-files.json \
   --policy <SKILL_DIR>/policy/slop.json \
   > <WORKDIR>/ledger/<実行 ID>/slop-iter-<N>.json
 ```
@@ -53,6 +55,8 @@ node <SKILL_DIR>/lib/slop-check.mjs \
 出力は `{"violations": [{"rule": "...", "detail": "...", "kind": "..."}], "identifiers": [{"where": "...", "token": "..."}], "parens": [{"where": "...", "token": "..."}]}`。`kind` は下の「違反は 3 つに分かれる」を参照。`identifiers` は違反ではなく Phase 5 の問い 6 の入力である。詳細は下記の「識別子の一覧は違反ではない」の節に書く。`parens` も違反ではなく Phase 5 の問い 14 の入力である。詳細は下記の「丸括弧の一覧も違反ではない」の節に書く。台帳（`iter-<N>.json`）と同じ実行 ID のディレクトリに置く。前回の実行が残した同名ファイルを今回のものとして誤って読まないようにするため。
 
 **行コメントを書き写した別ファイルを作らない。** 投稿するのと同じ `line-comments.json` を検査する。写し間違えると未検査のコメントが投稿される。スクリプトは `{path, line, numbered, text}` のオブジェクト配列を受け取り、`numbered` フラグで番号コメントかを判定する。
+
+**`--generated-file` は必ず渡す。** 渡さない、ファイルが無い、中身が文字列の配列でない、のどれかならスクリプトは終了コード 1 で止まる。Phase 3 が作った `WORKDIR/generated-files.json` をそのまま渡す。
 
 **保存した `slop-iter-<N>.json` が Phase 6 のループ判定の入力になる。** 違反件数を親が数え直して台帳に書くことはしない。ファイルを作らずに実行すると Phase 6 が止まる。
 
@@ -70,16 +74,18 @@ node <SKILL_DIR>/lib/slop-check.mjs \
 | 展開部分に識別子を禁止 | 単語の途中に大文字が入る語・下線でつないだ語・括弧付き・点でつないだ語・バッククォート囲み |
 | 展開部分に丸括弧を禁止 | 丸括弧を形で拾う。コードフェンス・インラインコード・URL・Markdown リンクの飛び先・HTML コメントの中は対象外 |
 | 番号コメントは1行 | `numbered: true` のコメントに改行があれば違反 |
+| 生成ファイルへの行コメント | `path` が生成ファイル一覧に入っている行コメント。番号コメントも意図コメントも対象 |
 | detailsの中身の最小文字数 | 空虚なテンプレ節の検出 |
 | PRタイトルの最大文字数 | `create` モード時のみ。既定 35 文字。値は `policy/slop.json` にある |
 | 必須detailsタイトル | `変更のサマリー` が無ければ違反 |
-| 任意枠の最大個数 | 予約タイトル以外の `<details>` が 3 個以上なら違反 |
+| 任意枠の最大個数 | 予約タイトル以外の `<details>` が 2 個以上なら違反 |
 | 禁止detailsタイトル | `<summary>` に `影響範囲` `今後の対応` `今後の予定` `残課題` `フォローアップ` のいずれかを含む枠があれば違反。改題では直したことにならない。枠ごと削除する |
 | 1段階目の最大バイト数 | `テスト` の枠を除いて、子を持つ 1 段階目が 21 バイト超。1 段だけの項目は対象外 |
 | 構造化箇条書きの段 | 同上 4 段階目があれば違反 |
 | 1段階目に2段階目が無い | 同上、見出しの直下が 2 段階目でない |
 | 構造化箇条書きが無い | 同上、`- ` が 1 行も無い |
-| detailsの中身の最大バイト数 | 構造化対象と任意枠が 750 バイト超。`ドキュメント` と `概要` は対象外 |
+| detailsの中身の最大バイト数 | `変更のサマリー` と `テスト` が 750 バイト超。`ドキュメント` と `概要` と任意枠は対象外 |
+| 任意枠の最大バイト数 | 予約タイトル以外の `<details>` の中身が 375 バイト超 |
 
 ## 違反は 3 つに分かれる
 
@@ -88,7 +94,7 @@ node <SKILL_DIR>/lib/slop-check.mjs \
 | 分類 | 中身 | 扱い |
 |---|---|---|
 | 装飾 | 絵文字、太字 | 上の除去で消えているはずのもの。ループにも投稿ゲートにも数えない。ここに出たら除去にバグがあるので報告する |
-| 骨格 | 必須の枠が無い、枠の中身が空、必須の枠に箇条書きが無い、1 段階目に 2 段階目が無い、禁止表現 | ループで直す。上限に達して残っていたら**投稿しない** |
+| 骨格 | 必須の枠が無い、枠の中身が空、必須の枠に箇条書きが無い、1 段階目に 2 段階目が無い、禁止表現、生成ファイルへの行コメント、任意枠が 2 個以上、任意枠が 375 バイト超 | ループで直す。上限に達して残っていたら**投稿しない** |
 | 言い換え | 上の 2 つ以外の全部 | ループで直す。上限に達して残っていても**投稿する** |
 
 **分類を親が付け直さない。** スクリプトの出力の値をそのまま使う。分類の表に無いルールが出るとスクリプトがエラーで止まる。

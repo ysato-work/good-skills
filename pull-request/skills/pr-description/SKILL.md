@@ -39,15 +39,17 @@ requires: pull-request/agents/pr-description/
 - `run-id` — Phase 0 で決めた今回の実行 ID。形式は `YYYYMMDD-hhmmss`
 - `body.md` — 生成した本文
 - `line-comments.json` — 行コメントの配列。1 件の形は `{path, line, numbered, text}` である
+- `reading-order.json` — Phase 3 で比べた番号コメントの順番の案と選んだ理由。中身は `{"candidates": [{"order": [...], "stumbles": [...]}], "chosen": ..., "reason": ...}` である。番号コメントが 1 件以下のときは無い
 - `material.md` — Phase 1 で集めた素材
 - `route.json` — Phase 0 で決めた投稿経路
-- `pr-state.json` — Phase 0 で保存した PR の状態。中身は `{"has_review": true|false}` である
+- `pr-state.json` — `create` モードで Phase 7 が作った PR の番号。中身は `{"pr_number": ...}` である。`edit` モードでは無い
 - `thrust.json` — Phase 2 で確定した主眼とついで
 - `current-body.md` — Phase 0 で保存した投稿前の既存本文。`create` モード・`--overwrite` 指定時・取得失敗時には無い
 - `body-state.json` — Phase 0 で決めた既存本文の状態。中身は `{"state":..., "last_ai_edit":..., "reason":..., "broken":...}` である。**判定をスキップする `create` モードと `--overwrite` 指定時にも必ず書かれる**
 - `mode.txt` — Phase 0 で決めた `edit` / `create` のモード
 - `level.txt` — Phase 0 で決めた `MODE`。値は `light` か `serious`
 - `base.txt` — `create` モード時のみ、base ブランチ名
+- `generated-files.json` — Phase 3 で作った生成ファイル一覧。リポジトリの `.gitattributes` で `linguist-generated` が有効な変更ファイルのパスの配列。Phase 4 の文面検査に渡す
 - `title.txt` — `create` モード、または `--overwrite` 指定時、Phase 3 で生成した PR タイトル
 - `past-titles.json` — `create` モード、または `--overwrite` 指定時、タイトルを書く直前に取った過去タイトル。`gh` の JSON をそのまま入れる。取れないときはこのファイルは無い
 - `review-findings.json` — Phase 5 のセルフレビューで出た指摘
@@ -63,6 +65,10 @@ requires: pull-request/agents/pr-description/
 - `ledger/<実行 ID>/compress-notouch-iter-2.json` — 圧縮担当に渡す「触ってはいけない引用」の配列。本気モードの 2 周目だけ渡す。前周回の門通過ファイルから抜き出す
 - `body-stamped.md` — Phase 7 でマーカーを付けた投稿用本文。**投稿するのはこれ**。人に聞いて承諾が得られず更新を見送ったときは無い
 - `posted-body.md` — Phase 7 で投稿後に読み直した本文。マーカーの確認用である。本文を更新しなかったときは無い
+- `review-id.txt` — Phase 7 で投稿した review の ID。Phase 7 の投稿前に毎回削除する。今回の投稿の応答に ID が含まれていたときだけ、投稿後にできる
+- `purge-comments.json` — Phase 7 で前回の行コメントを消し、レビュー本体を非表示にした結果。中身は `{"ok":..., "deleted":..., "hidden":..., "failed":..., "failures":[...]}` である。投稿前に毎回削除する。`create` モードでは無い
+- `line-comments-post.json` — Phase 7 で印を付けた投稿用の行コメントとレビュー本体。中身は `{"review_body": ..., "comments": [{path, line, body}]}` である。**投稿するのはこれ**
+- `nav-links.json` — Phase 7 で番号コメントに移動リンクを付けた結果。中身は `{"ok":..., "total":..., "linked":..., "failed":..., "failures":[...]}` である。投稿前に毎回削除する。番号コメントを投稿しなかったときは無い
 
 ## 対象外
 
@@ -77,7 +83,6 @@ requires: pull-request/agents/pr-description/
 - `--light`。軽量モードを強制する。自動判定を無効化する
 - `--serious` と `--light` を同時指定するとエラーで停止する
 - `--base=<ブランチ>`。`create` モード時のみ有効。省略時は `gh` の default branch
-- `--force-comments`。`has_review=true` の PR にも番号コメントを投稿する。`edit` モード時のオーバーライド
 - `--overwrite`。`edit` モード時のみ有効。既存本文を捨てて書き直し、タイトルも書き換える。印を見ず、確認も取らない。`create` モードでは create が優先され、`--overwrite` は無視する。無視した旨は Phase 7 の報告に書く
 
 ## 実行ルール
