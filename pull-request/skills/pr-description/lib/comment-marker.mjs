@@ -6,12 +6,15 @@ import { fileURLToPath } from "node:url";
 
 export const COMMENT_MARKER = "<!-- pr-desc:comment -->";
 
+// 番号付きはファイル単位のコメントになる。行番号は入れない。番号なしの意図コメントは
+// 今までどおり行単位なので line を入れる。どちらも subject_type で投稿先のレベルを伝える。
 export function stampComments(lineComments) {
-  return lineComments.map((c) => ({
-    path: c.path,
-    line: c.line,
-    body: `${c.text.replace(/\s+$/, "")}\n\n${COMMENT_MARKER}`,
-  }));
+  return lineComments.map((c) => {
+    const body = `${c.text.replace(/\s+$/, "")}\n\n${COMMENT_MARKER}`;
+    return c.numbered
+      ? { path: c.path, subject_type: "file", body }
+      : { path: c.path, line: c.line, subject_type: "line", body };
+  });
 }
 
 export function buildReviewBody(lineComments) {

@@ -43,7 +43,7 @@ export function decide({
   const remaining = skeleton + reword + review_findings + compress_unresolved;
 
   // 語り口の書き直しをした周回と、圧縮を反映した周回の後は、その文を表層検査と
-  // 14 問にもう 1 回通すために続行を強制する。どちらも前半だけの軸なので、
+  // 16 問にもう 1 回通すために続行を強制する。どちらも前半だけの軸なので、
   // この強制が効くのも本気モードの 1〜2 周目の後だけ。
   if (remaining === 0 && tone_rewrites === 0 && compress_applied === 0) {
     return { action: "STOP", publish: true, reason: "clean" };

@@ -100,11 +100,11 @@ node <SKILL_DIR>/lib/body-marker.mjs compose --overwrite \
 
 ### 承諾が得られなかったとき
 
-**更新しない。** 返事が得られない実行でも同じ。このとき **`body-stamped.md` は作らない。本文もタイトルも投稿せず、投稿後の印の確認も行わない。** 生成した本文は `WORKDIR` に残し、「現在の本文はここをこう直した方がいい」という指摘として出す。行コメントの投稿は承諾の有無に関わらず通常どおり行う。
+**更新しない。** 返事が得られない実行でも同じ。このとき **`body-stamped.md` は作らない。本文もタイトルも投稿せず、投稿後の印の確認も行わない。** 生成した本文は `WORKDIR` に残し、「現在の本文はここをこう直した方がいい」という指摘として出す。コメントの投稿は承諾の有無に関わらず通常どおり行う。
 
-## 前回の行コメントを消し、レビュー本体を隠す
+## 前回のコメントを消し、レビュー本体を隠す
 
-**`edit` モードでは、レビューを投稿する前に、前回までにこのスキルが投稿した行コメントを全部消し、レビュー本体を非表示にする。** 消さずに投稿すると新旧の番号と意図コメントが二重に並び、「番号順に読んでください」がどの組を指すか分からなくなる。PR にレビューが付いているかどうかで分けない。`create` モードは新しい PR なので行わない。
+**`edit` モードでは、レビューを投稿する前に、前回までにこのスキルが投稿したコメントを全部消し、レビュー本体を非表示にする。** 消さずに投稿すると新旧の番号と意図コメントが二重に並び、「番号順に読んでください」がどの組を指すか分からなくなる。PR にレビューが付いているかどうかで分けない。`create` モードは新しい PR なので行わない。
 
 **手で消さない。スクリプトに任せる。** 投稿する前に `<WORKDIR>/purge-comments.json` を削除してから走らせる。前回の実行の残りを今回のものと取り違えないためである。
 
@@ -112,7 +112,7 @@ node <SKILL_DIR>/lib/body-marker.mjs compose --overwrite \
 node <SKILL_DIR>/lib/purge-comments.mjs --pr <PR_NUMBER> --out <WORKDIR>/purge-comments.json
 ```
 
-スクリプトが消すのは、実行者自身が投稿した行コメントのうち、印 `<!-- pr-desc:comment -->` を含むものと、本文の先頭が `<数字>:` のものである。非表示にするのは、実行者自身が投稿したレビューのうち、本文に印を含むものと、「番号順に読んでください」を含むものである。人間や他のレビュワーのコメントは消さない。消した行コメントに付いていた返信は GitHub の仕組みで残る。
+スクリプトが消すのは、実行者自身が投稿したコメントのうち、印 `<!-- pr-desc:comment -->` を含むものと、本文の先頭が `<数字>:` のものである。非表示にするのは、実行者自身が投稿したレビューのうち、本文に印を含むものと、「番号順に読んでください」を含むものである。人間や他のレビュワーのコメントは消さない。消したコメントに付いていた返信は GitHub の仕組みで残る。
 
 **`route.json` の `route` が `mcp` でもこのスクリプトは gh を使う。** GitHub MCP にはレビューを非表示にする手段が無いためである。`route` が `gh-unsandboxed` のときはサンドボックスを超えて実行する。
 
@@ -127,15 +127,15 @@ node <SKILL_DIR>/lib/purge-comments.mjs --pr <PR_NUMBER> --out <WORKDIR>/purge-c
 1. **本文を先に更新する。** 投稿する中身は `WORKDIR/body-stamped.md`。`state` が `overwrite` のときは `WORKDIR/title.txt` でタイトルも更新する。それ以外ではタイトルを触らない
    - **`state` が `mismatch` / `unknown` で承諾が得られなかったときは、本文もタイトルも更新しない。** `body-stamped.md` が無いのが正常な状態であり、投稿の失敗ではない。手順 2 の印の確認も行わず、手順 3 へ進む
 2. **投稿した本文を読み直して、マーカーが乗ったことを確かめる。** 手順は下記のとおり。本文を更新しなかったときは行わない
-3. **前回の行コメントを消し、レビュー本体を隠す。** 上記「前回の行コメントを消し、レビュー本体を隠す」のとおり
-4. **投稿用の行コメントとレビュー本体に印を付ける。** 手で印を書かない。
+3. **前回のコメントを消し、レビュー本体を隠す。** 上記「前回のコメントを消し、レビュー本体を隠す」のとおり
+4. **投稿用のコメントとレビュー本体に印を付ける。** 手で印を書かない。
 
    ```bash
    node <SKILL_DIR>/lib/comment-marker.mjs --in <WORKDIR>/line-comments.json --out <WORKDIR>/line-comments-post.json
    ```
 
    終了コードが 0 でなければ、レビューを投稿しない。標準エラーの理由を報告し、生成物を `WORKDIR` に残す
-5. **レビューを後で投稿する。** 投稿する前に `<WORKDIR>/review-id.txt` と `<WORKDIR>/nav-links.json` を削除する。前回の実行の残りを今回のものと取り違えないためである。pending review を作り、`line-comments-post.json` の `comments` の各 `body` を行コメントとして全部足してから、`review_body` をレビュー本体にして COMMENT として 1 回 submit する。**`line-comments.json` の `text` をそのまま投稿しない。** 印が付かず、次の実行で消せなくなる
+5. **レビューを後で投稿する。** 投稿する前に `<WORKDIR>/review-id.txt` と `<WORKDIR>/nav-links.json` を削除する。前回の実行の残りを今回のものと取り違えないためである。pending review を作り、`line-comments-post.json` の `comments` を 1 件ずつ全部足してから、`review_body` をレビュー本体にして COMMENT として 1 回 submit する。**足すときは `subject_type` を見る。** `file` のコメントはファイル単位で、`line` のコメントはその行に足す。呼び方は下記「コメントを足すときの呼び方」のとおり。**`line-comments.json` の `text` をそのまま投稿しない。** 印が付かず、次の実行で消せなくなる
 6. **番号コメントに移動リンクを付ける。** 番号コメントを投稿したときだけ行う。下記「番号コメントに移動リンクを付ける」のとおり
 
 ### create モード
@@ -151,9 +151,47 @@ node <SKILL_DIR>/lib/purge-comments.mjs --pr <PR_NUMBER> --out <WORKDIR>/purge-c
 2. **返った URL から PR 番号を抽出し、`<WORKDIR>/pr-state.json` に書く**
    URL の末尾セグメントが番号。中身は `{"pr_number": <番号>}` である
 3. **投稿した本文を読み直して、マーカーが乗ったことを確かめる。** 手順は下記のとおり
-4. **投稿用の行コメントとレビュー本体に印を付ける。** edit モードの手順 4 と同じコマンドを走らせる。終了コードが 0 でなければ、レビューを投稿しない
-5. **レビューを投稿する。** 投稿する前に `<WORKDIR>/review-id.txt` と `<WORKDIR>/nav-links.json` を削除する。前回の実行の残りを今回のものと取り違えないためである。`line-comments-post.json` の `comments` の各 `body` を行コメントとして全部足し、`review_body` をレビュー本体にして COMMENT として 1 回 submit する
+4. **投稿用のコメントとレビュー本体に印を付ける。** edit モードの手順 4 と同じコマンドを走らせる。終了コードが 0 でなければ、レビューを投稿しない
+5. **レビューを投稿する。** 投稿する前に `<WORKDIR>/review-id.txt` と `<WORKDIR>/nav-links.json` を削除する。前回の実行の残りを今回のものと取り違えないためである。pending review を作り、`line-comments-post.json` の `comments` を 1 件ずつ全部足し、`review_body` をレビュー本体にして COMMENT として 1 回 submit する。足し方は edit モードの手順 5 と同じである
 6. **番号コメントに移動リンクを付ける。** 下記「番号コメントに移動リンクを付ける」のとおり
+
+## コメントを足すときの呼び方
+
+**REST のコメント追加では、ファイル単位のコメントを付けられない。** `subject_type` を受け付けないためである（1 件ずつ足す形でも同じ）。**GraphQL の mutation で下書きのレビューを作り、コメントを 1 件ずつ足し、提出する。**
+
+まず PR の node ID を取る。
+
+```bash
+gh api repos/{owner}/{repo}/pulls/<PR_NUMBER> --jq .node_id
+```
+
+下書きのレビューを作る。
+
+```bash
+gh api graphql -f query='mutation($p:ID!, $b:String!) { addPullRequestReview(input: {pullRequestId: $p, body: $b}) { pullRequestReview { id databaseId state } } }' -f p=<PRのnodeID> -f b="<レビュー本体>"
+```
+
+返った `data.addPullRequestReview.pullRequestReview.id` を `<レビューnodeID>`、`databaseId` を `<レビューID>` として使う。`state` は `PENDING` になる。次に、`line-comments-post.json` の `comments` を 1 件ずつ足す。
+
+ファイル単位。`line` は付けない。**`subjectType: FILE` を明示する。**
+
+```bash
+gh api graphql -f query='mutation($r:ID!, $path:String!, $b:String!) { addPullRequestReviewThread(input: {pullRequestReviewId: $r, path: $path, body: $b, subjectType: FILE}) { thread { id subjectType } } }' -f r=<レビューnodeID> -f path="<path>" -f b="<body>"
+```
+
+行単位。`side` は追加行に付ける場合の `RIGHT`。
+
+```bash
+gh api graphql -f query='mutation($r:ID!, $path:String!, $b:String!) { addPullRequestReviewThread(input: {pullRequestReviewId: $r, path: $path, body: $b, subjectType: LINE, line: <line>, side: RIGHT}) { thread { id subjectType line } } }' -f r=<レビューnodeID> -f path="<path>" -f b="<body>"
+```
+
+最後に、REST で提出する。GraphQL で作った下書きも、この経路で提出できる。
+
+```bash
+gh api -X POST repos/{owner}/{repo}/pulls/<PR_NUMBER>/reviews/<レビューID>/events -f event=COMMENT
+```
+
+**GitHub MCP を使う経路では、コメントを足すツールの `subjectType` に `FILE` か `LINE` を渡す。** `subjectType` が無い版の MCP だった場合は、そこで止めて理由を報告する。黙って行単位で貼らない。
 
 ## 番号コメントに移動リンクを付ける
 
@@ -172,7 +210,7 @@ node <SKILL_DIR>/lib/purge-comments.mjs --pr <PR_NUMBER> --out <WORKDIR>/purge-c
    node <SKILL_DIR>/lib/nav-links.mjs --pr <PR_NUMBER> --out <WORKDIR>/nav-links.json
    ```
 
-**`route.json` の `route` が `mcp` でもこのスクリプトは gh を使う。** GitHub MCP には行コメントを編集する手段が無いためである。`route` が `gh-unsandboxed` のときはサンドボックスを超えて実行する。
+**`route.json` の `route` が `mcp` でもこのスクリプトは gh を使う。** GitHub MCP にはコメントを編集する手段が無いためである。`route` が `gh-unsandboxed` のときはサンドボックスを超えて実行する。
 
 **失敗しても投稿を止めない。** スクリプトは常に終了コード 0 で終わり、結果を `nav-links.json` に書く。`ok` が `false` なら、番号コメント全件にリンクを付けられなかったとして報告する。gh が使えない環境もここに入る。`failed` が 1 以上なら、その件数を報告する。
 
@@ -213,6 +251,8 @@ node <SKILL_DIR>/lib/body-marker.mjs check --body-file <WORKDIR>/posted-body.md
 
 ## 最後に報告する
 
+- 本質fix を付けたかどうか。付けたならそのファイルと行。付けていないなら、付けていない旨
+- issue をどう書いたか。`ref` にしたか `fix` にしたか。`issue-verdict.json` の `closure` を書く。issue が無ければ書かない
 - 主眼の数と、`概要` に畳んだかどうか
 - 表層検出で出た違反の件数と、セルフレビューの指摘の直した件数・理由付きで残した件数。**骨格の違反とセルフレビューの未決着は投稿する時点で残っていないはずだが、言い換えの違反は上限到達時、つまり `max_iter_reached_publishable` のときに残ったまま投稿されることがある。** 残っていればその件数と内容を書く
 - 装飾を除去した個数。装飾とは絵文字と太字である。`decoration` の合計を書く
@@ -224,7 +264,7 @@ node <SKILL_DIR>/lib/body-marker.mjs check --body-file <WORKDIR>/posted-body.md
 - `create` モードで `--overwrite` が指定されていた場合は、**無視した旨**
 - タイトルを書き換えたかどうか
 - 投稿した先。本文とレビューのどちらを投稿したかを書く。投稿しなかったものがあればその理由も書く
-- 前回の行コメントを消した件数と、レビュー本体を非表示にした件数。`purge-comments.json` の `deleted` と `hidden` を書く。`failed` が 1 以上ならその件数と理由、`ok` が `false` なら理由 `reason` と、何も消していないことを書く。`create` モードでは書かない。消した後にレビューの投稿が失敗した場合は、前回の行コメントが消えたまま新しいものが無い状態であることを明示する
+- 前回のコメントを消した件数と、レビュー本体を非表示にした件数。`purge-comments.json` の `deleted` と `hidden` を書く。`failed` が 1 以上ならその件数と理由、`ok` が `false` なら理由 `reason` と、何も消していないことを書く。`create` モードでは書かない。消した後にレビューの投稿が失敗した場合は、前回のコメントが消えたまま新しいものが無い状態であることを明示する
 - 番号コメントに移動リンクを付けた件数と、付けられなかった件数。`nav-links.json` の `linked` と `failed` を書く。`ok` が `false` なら理由 `reason` と、番号コメント全件にリンクが無いことを書く。番号コメントを投稿しなかった実行では書かない
 - 新規作成した PR の番号と URL。`create` モードのときだけ
 - 実際に push したかどうか。未 push だった場合は、Phase 0 で push した旨を書く

@@ -120,7 +120,7 @@ export function extractIdentifiers(text, policy) {
   return out;
 }
 
-// summary と details の中身、行コメントから初出だけを集める。展開部分は
+// summary と details の中身、コメントから初出だけを集める。展開部分は
 // checkStructure が違反として見るのでここには入れない。summary は畳んだ状態で
 // 見える行なので、details の中身と分けて where を振る。
 export function collectIdentifiers({ body, lineComments = [] }, policy) {
@@ -150,7 +150,7 @@ export function collectIdentifiers({ body, lineComments = [] }, policy) {
     });
   } while (text !== prev);
   lineComments.forEach((c, i) => {
-    add(`行コメント ${i + 1}`, extractIdentifiers(commentText(c), policy));
+    add(`コメント ${i + 1}`, extractIdentifiers(commentText(c), policy));
   });
   return out;
 }
@@ -179,7 +179,7 @@ export function collectParens({ body, lineComments = [] }) {
     });
   } while (text !== prev);
   lineComments.forEach((c, i) => {
-    add(`行コメント ${i + 1}`, extractParens(commentText(c)));
+    add(`コメント ${i + 1}`, extractParens(commentText(c)));
   });
   return out;
 }
@@ -433,8 +433,8 @@ export function checkBodySections(body, policy) {
   return violations;
 }
 
-// 行コメントは line-comments.json のオブジェクト（{path, line, numbered, text}）を
-// そのまま受ける。文字列の配列も後方互換で受ける。
+// コメントは line-comments.json のオブジェクトをそのまま受ける。番号付きは line を持たず、
+// 番号なしは line を持つ。文字列の配列も後方互換で受ける。
 export function commentText(c) {
   if (typeof c === "string") return c;
   return typeof c?.text === "string" ? c.text : "";
@@ -458,14 +458,113 @@ export function checkLineComments(comments, policy) {
   return violations;
 }
 
+// 番号付きはファイル単位なので行番号を持たない。行番号があるときだけ付けて出す。
+function commentLocation(c) {
+  return typeof c?.line === "number" ? `${c.path}:${c.line}` : c.path;
+}
+
 export function checkGeneratedFileComments(comments, generatedFiles) {
   const generated = new Set(generatedFiles);
   return comments
     .filter((c) => typeof c === "object" && generated.has(c?.path))
     .map((c) => ({
       rule: "生成ファイルへの行コメント",
-      detail: `${c.path}:${c.line} に付いている。生成ファイルには行コメントを付けない`,
+      detail: `${commentLocation(c)} に付いている。生成ファイルには行コメントを付けない`,
     }));
+}
+
+// 本質fix は PR に 1 件まで。文言は固定なので AI に考えさせない。
+// essence を持たないコメントは、ここでは何も見ない。意図コメントは別の検査の担当である。
+export function checkEssenceComments(comments, policy) {
+  const word = policy["本質fixの文言"];
+  if (typeof word !== "string") return [];
+  const essences = comments.filter((c) => typeof c === "object" && c !== null && c.essence === true);
+  const violations = [];
+  if (essences.length > 1) {
+    violations.push({
+      rule: "本質fixは1件まで",
+      detail: `${essences.length} 件ある。PR に付けられるのは 1 件まで`,
+    });
+  }
+  for (const c of essences) {
+    const text = commentText(c).trim();
+    if (text !== word) {
+      violations.push({
+        rule: "本質fixの文言",
+        detail: `"${text}" になっている。${word} だけを書く`,
+      });
+    }
+  }
+  return violations;
+}
+
+const MD_LINK_SPAN_RE = /\[[^\]\n]*\]\([^)\n]*\)/g;
+const MD_LINK_TARGET_RE = /\[[^\]\n]*\]\(([^)\n]*)\)/g;
+const CODE_SPAN_RE = /```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`/g;
+// g を付けない。.test() を繰り返し呼ぶためである。
+const ISSUE_URL_RE = /https?:\/\/github\.com\/[\w.-]+\/[\w.-]+\/issues\/\d+/;
+
+function maskSpans(text, re) {
+  return text.replace(re, (m) => " ".repeat(m.length));
+}
+
+// 裸の URL とは、Markdown リンクの飛び先とコードの中を除いて残る URL である。
+export function checkBareUrls({ body, lineComments = [] }) {
+  const violations = [];
+  const scan = (text, where) => {
+    const masked = maskSpans(maskSpans(text, MD_LINK_SPAN_RE), CODE_SPAN_RE);
+    for (const m of masked.matchAll(URL_RE)) {
+      violations.push({
+        rule: "裸のURLを禁止",
+        detail: `${where}に ${m[0]} がある。[短いタイトル](${m[0]}) の形にする`,
+      });
+    }
+  };
+  scan(body, "本文");
+  lineComments.forEach((c, i) => scan(commentText(c), `コメント ${i + 1} `));
+  return violations;
+}
+
+// `#123` の手前が `owner/repo` の形なら、その手前まで戻してキーワードを探す。
+function precedingWindow(text, hashIndex) {
+  const head = text.slice(0, hashIndex);
+  const m = /(?:[\w.-]+\/)*[\w.-]*$/.exec(head);
+  const start = head.length - (m === null ? 0 : m[0].length);
+  return { start, before: text.slice(Math.max(0, start - 5), start) };
+}
+
+export function bareIssueRefs(text) {
+  const out = [];
+  for (const m of text.matchAll(/#\d+/g)) {
+    const { before } = precedingWindow(text, m.index);
+    if (before !== "ref: " && before !== "fix: ") out.push(m[0]);
+  }
+  return out;
+}
+
+// ドキュメント枠。issue はキーワード付きの番号で書く。
+// 裸の issue URL は checkBareUrls が拾うので、ここでは Markdown リンクの中だけを見る。
+export function checkDocumentFrame(body) {
+  const violations = [];
+  for (const b of iterDetails(body)) {
+    if (b.title !== "ドキュメント") continue;
+    for (const m of b.content.matchAll(MD_LINK_TARGET_RE)) {
+      if (ISSUE_URL_RE.test(m[1])) {
+        violations.push({
+          rule: "issueのURLを貼らない",
+          detail: `ドキュメント枠のリンク先が issue の URL。ref: #番号 か fix: #番号 に直す`,
+        });
+      }
+    }
+    const masked = maskSpans(maskSpans(b.content, MD_LINK_SPAN_RE), CODE_SPAN_RE);
+    for (const ref of bareIssueRefs(masked)) {
+      violations.push({
+        rule: "issueはキーワード付きで書く",
+        detail: `ドキュメント枠の "${ref}" に ref: か fix: が無い`,
+      });
+    }
+  }
+  return violations;
 }
 
 export function checkTitle(title, policy) {
@@ -498,6 +597,11 @@ export const RULE_KINDS = {
   "禁止detailsタイトル": "骨格",
   "禁止表現": "骨格",
   "生成ファイルへの行コメント": "骨格",
+  "本質fixは1件まで": "骨格",
+  "本質fixの文言": "骨格",
+  "裸のURLを禁止": "骨格",
+  "issueはキーワード付きで書く": "骨格",
+  "issueのURLを貼らない": "骨格",
   "任意枠の最大個数": "骨格",
   "任意枠の最大バイト数": "骨格",
   "禁止語": "言い換え",
@@ -531,6 +635,9 @@ export function checkAll({ body, lineComments = [], title, generatedFiles = [] }
     ...checkBodySections(body, policy),
     ...checkLineComments(lineComments, policy),
     ...checkGeneratedFileComments(lineComments, generatedFiles),
+    ...checkEssenceComments(lineComments, policy),
+    ...checkBareUrls({ body, lineComments }),
+    ...checkDocumentFrame(body),
   ];
   for (const c of lineComments) {
     violations.push(...checkVocabulary(commentText(c), policy));
