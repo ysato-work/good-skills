@@ -23,6 +23,9 @@ import {
   checkBodySections,
   checkTitle,
   checkGeneratedFileComments,
+  checkEssenceComments,
+  checkBareUrls,
+  checkDocumentFrame,
 } from "./slop-check.mjs";
 import { classifyRule, RULE_KINDS } from "./slop-check.mjs";
 
@@ -283,7 +286,7 @@ test("1. 形式の番号コメントも numbered フラグで違反になる", (
   assert.ok(v.some((x) => x.rule === "番号コメントは1行"));
 });
 
-test("checkAll はオブジェクトの行コメントにも禁止語検査をかける", () => {
+test("checkAll はオブジェクトのコメントにも禁止語検査をかける", () => {
   const comments = [{ path: "a.mjs", line: 1, numbered: true, text: "1: 大幅に速くした" }];
   const { violations } = checkAll({ body: "主眼。", lineComments: comments }, POLICY);
   assert.ok(violations.some((x) => x.rule === "禁止語" && x.detail.includes("大幅に")));
@@ -387,7 +390,7 @@ test("展開部分に識別子があると違反になる", () => {
   assert.ok(v.some((x) => x.rule === "展開部分に識別子を禁止"));
 });
 
-test("collectIdentifiers は details と行コメントから where 付きで返す", () => {
+test("collectIdentifiers は details とコメントから where 付きで返す", () => {
   const body = [
     "主眼の文。",
     "",
@@ -399,7 +402,7 @@ test("collectIdentifiers は details と行コメントから where 付きで返
   const comments = [{ path: "lib/score.mjs", line: 42, numbered: true, text: "1: enabled_features を読む" }];
   assert.deepStrictEqual(collectIdentifiers({ body, lineComments: comments }, POLICY), [
     { where: "details 1", token: "applyFallback" },
-    { where: "行コメント 1", token: "enabled_features" },
+    { where: "コメント 1", token: "enabled_features" },
   ]);
 });
 
@@ -686,7 +689,7 @@ test("予約タイトルは任意枠の個数に数えない", () => {
     "主眼の文。",
     "",
     summaryBlock(),
-    block("ドキュメント", "https://github.com/example-org/example-repo/issues/91 を辿る。"),
+    block("ドキュメント", "[設計](https://example.com/design) を辿る。"),
     block("テスト", ["- テストしたこと", "  - リトライ上限で止まること", "- テストしてないこと", "  - 他スキルからの呼び出し"].join("\n")),
     block("概要", "主眼が三つあるので畳んだ文をここへ書く。"),
   ].join("\n");
@@ -1104,7 +1107,7 @@ test("業務の名詞は違反にならない", () => {
   assert.deepStrictEqual(checkBannedExpressions("返品方針の表示を変えた。", POLICY), []);
 });
 
-test("checkAll は行コメントにも禁止表現をかける", () => {
+test("checkAll はコメントにも禁止表現をかける", () => {
   const { violations } = checkAll(
     { body: "主眼。", lineComments: [{ path: "a.mjs", line: 1, numbered: false, text: "別途対応する。" }] },
     POLICY,
@@ -1298,17 +1301,17 @@ test("collectParens は details の本文から拾う", () => {
   assert.deepStrictEqual(collectParens({ body }), [{ where: "details 1", token: "（50 点）" }]);
 });
 
-test("collectParens は文字列の行コメントから拾う", () => {
+test("collectParens は文字列のコメントから拾う", () => {
   const body = "採点できなかった候補に仮の点をつけた。";
   assert.deepStrictEqual(collectParens({ body, lineComments: ["採点の条件（50 点）を確認した。"] }), [
-    { where: "行コメント 1", token: "（50 点）" },
+    { where: "コメント 1", token: "（50 点）" },
   ]);
 });
 
-test("collectParens はオブジェクトの行コメントから拾う", () => {
+test("collectParens はオブジェクトのコメントから拾う", () => {
   const body = "採点できなかった候補に仮の点をつけた。";
   const lineComments = [{ path: "lib/score.mjs", line: 12, numbered: false, text: "しきい値(50)を見直した。" }];
-  assert.deepStrictEqual(collectParens({ body, lineComments }), [{ where: "行コメント 1", token: "(50)" }]);
+  assert.deepStrictEqual(collectParens({ body, lineComments }), [{ where: "コメント 1", token: "(50)" }]);
 });
 
 test("collectParens は同じ丸括弧が 2 回出れば 2 件返す", () => {
@@ -1593,4 +1596,150 @@ test("G31 CLI: 一覧ファイルが空だと終了コード 1 で理由を出�
 
 test("G32 CLI: --generated-file の値が欠けていると終了コード 1 で理由を出す", () => {
   assertCliFails({ comments: YARN_COMMENT, trailingFlag: true });
+});
+
+test("生成ファイル違反は、行番号が無いコメントではパスだけを出す", () => {
+  const v = checkGeneratedFileComments([{ path: "a/b.json", numbered: true, text: "1: x" }], ["a/b.json"]);
+  assert.deepStrictEqual(v, [
+    { rule: "生成ファイルへの行コメント", detail: "a/b.json に付いている。生成ファイルには行コメントを付けない" },
+  ]);
+});
+
+test("生成ファイル違反は、行番号があるコメントではパスと行番号を出す", () => {
+  const v = checkGeneratedFileComments([{ path: "a/b.json", line: 7, numbered: false, text: "x" }], ["a/b.json"]);
+  assert.deepStrictEqual(v, [
+    { rule: "生成ファイルへの行コメント", detail: "a/b.json:7 に付いている。生成ファイルには行コメントを付けない" },
+  ]);
+});
+
+test("番号付きコメントも 1 行の検査を受ける", () => {
+  const v = checkLineComments([{ path: "a.mjs", numbered: true, text: "1: a\n続き" }], { "番号コメントは1行": true });
+  assert.strictEqual(v.length, 1);
+  assert.strictEqual(v[0].rule, "番号コメントは1行");
+});
+
+// --- 本質fix ---
+
+const essence = (over = {}) => ({
+  path: "a.mjs",
+  line: 1,
+  numbered: false,
+  essence: true,
+  text: "本質fix",
+  ...over,
+});
+
+test("本質fix は 1 件なら違反にならない", () => {
+  assert.deepStrictEqual(checkEssenceComments([essence()], POLICY), []);
+});
+
+test("本質fix が 0 件でも違反にならない", () => {
+  assert.deepStrictEqual(checkEssenceComments([], POLICY), []);
+});
+
+test("本質fix が 2 件だと違反になる", () => {
+  const v = checkEssenceComments([essence(), essence({ path: "b.mjs", line: 2 })], POLICY);
+  assert.strictEqual(v.length, 1);
+  assert.strictEqual(v[0].rule, "本質fixは1件まで");
+});
+
+test("本質fix の文言が違うと違反になる", () => {
+  const v = checkEssenceComments([essence({ text: "ここが要" })], POLICY);
+  assert.strictEqual(v.length, 1);
+  assert.strictEqual(v[0].rule, "本質fixの文言");
+});
+
+test("essence の無いコメントは本質fix の検査を受けない", () => {
+  const comments = [{ path: "a.mjs", line: 1, numbered: false, text: "意図のコメント。" }];
+  assert.deepStrictEqual(checkEssenceComments(comments, POLICY), []);
+});
+
+test("checkAll を通しても本質fix の違反が骨格で出る", () => {
+  const lineComments = [essence(), essence({ path: "b.mjs", line: 2 })];
+  const { violations } = checkAll({ body: "主眼の文。", lineComments }, POLICY);
+  const hit = violations.find((v) => v.rule === "本質fixは1件まで");
+  assert.ok(hit, "本質fixは1件まで が出ていない");
+  assert.strictEqual(hit.kind, "骨格");
+});
+
+// --- リンクの形式 ---
+
+function docBody(inner) {
+  return ["主眼の文。", "", "<details>", "<summary>ドキュメント</summary>", "", inner, "", "</details>"].join("\n");
+}
+
+test("本文の裸の URL は違反になる", () => {
+  const v = checkBareUrls({ body: "https://example.com/a を辿る。" });
+  assert.strictEqual(v.length, 1);
+  assert.strictEqual(v[0].rule, "裸のURLを禁止");
+});
+
+test("Markdown リンクの中の URL は違反にならない", () => {
+  assert.deepStrictEqual(checkBareUrls({ body: "[設計](https://example.com/a) を辿る。" }), []);
+});
+
+test("コードの中の URL は違反にならない", () => {
+  assert.deepStrictEqual(checkBareUrls({ body: "`https://example.com/a` を使う。" }), []);
+  assert.deepStrictEqual(checkBareUrls({ body: "~~~\nhttps://example.com/a\n~~~" }), []);
+});
+
+test("コメントの裸の URL は違反になる", () => {
+  const lineComments = [{ path: "a.mjs", line: 1, numbered: false, text: "https://example.com/a を見る。" }];
+  const v = checkBareUrls({ body: "主眼。", lineComments });
+  assert.strictEqual(v.length, 1);
+  assert.strictEqual(v[0].rule, "裸のURLを禁止");
+});
+
+test("ドキュメント枠の issue 参照にキーワードが無いと違反になる", () => {
+  const v = checkDocumentFrame(docBody("- #123 を直した。"));
+  assert.strictEqual(v.length, 1);
+  assert.strictEqual(v[0].rule, "issueはキーワード付きで書く");
+});
+
+test("ref: と fix: は違反にならない", () => {
+  assert.deepStrictEqual(checkDocumentFrame(docBody("- ref: #123 を辿る。\n- fix: #124 を閉じる。")), []);
+});
+
+test("別リポジトリの issue もキーワードがあれば違反にならない", () => {
+  assert.deepStrictEqual(
+    checkDocumentFrame(docBody("- fix: example-org/example-repo#91 を閉じる。")),
+    [],
+  );
+});
+
+test("別リポジトリの issue にキーワードが無いと違反になる", () => {
+  const v = checkDocumentFrame(docBody("- example-org/example-repo#91 を辿る。"));
+  assert.strictEqual(v.length, 1);
+  assert.strictEqual(v[0].rule, "issueはキーワード付きで書く");
+});
+
+test("ドキュメント枠の issue の URL は違反になる", () => {
+  const v = checkDocumentFrame(docBody("- [設計](https://github.com/example-org/example-repo/issues/91) を辿る。"));
+  assert.strictEqual(v.length, 1);
+  assert.strictEqual(v[0].rule, "issueのURLを貼らない");
+});
+
+test("ドキュメント枠の外の issue 参照は違反にならない", () => {
+  const body = [
+    "主眼。",
+    "",
+    "<details>",
+    "<summary>変更のサマリー</summary>",
+    "",
+    "- 変更",
+    "  - #123 の対応",
+    "",
+    "</details>",
+  ].join("\n");
+  assert.deepStrictEqual(checkDocumentFrame(body), []);
+});
+
+test("checkAll を通してもリンクの違反が骨格で出る", () => {
+  const body = ["https://example.com/a を辿る。", "", summaryBlock(), docBody("- #123 を直した。")].join("\n");
+  const { violations } = checkAll({ body }, POLICY);
+  for (const rule of ["裸のURLを禁止", "issueはキーワード付きで書く"]) {
+    const hit = violations.find((v) => v.rule === rule);
+    assert.ok(hit, `${rule} が出ていない`);
+    assert.strictEqual(hit.kind, "骨格");
+  }
 });

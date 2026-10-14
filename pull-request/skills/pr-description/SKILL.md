@@ -1,6 +1,6 @@
 ---
 name: pr-description
-description: PR の説明文と diff への行コメントを書いて投稿するときに使う。AI が書くと AI Slop になる問題を、表層はスクリプト検出・構造はセルフレビューで抑える。発動状況は 3 つ。1 つ目は PR を作った直後に説明文を書きたいとき。2 つ目は既存 PR の説明文が古くなったので追従させたいとき。3 つ目は diff に読む順序と意図のコメントを付けたいとき。
+description: PR の説明文と diff へのコメントを書いて投稿するときに使う。AI が書くと AI Slop になる問題を、表層はスクリプト検出・構造はセルフレビューで抑える。発動状況は 3 つ。1 つ目は PR を作った直後に説明文を書きたいとき。2 つ目は既存 PR の説明文が古くなったので追従させたいとき。3 つ目は diff に読む順序と意図のコメントを付けたいとき。
 requires: pull-request/agents/pr-description/
 ---
 
@@ -10,7 +10,7 @@ requires: pull-request/agents/pr-description/
 
 まず以下を伝えてから処理を開始する。
 
-「PR の説明文と diff の行コメントを書いて投稿します。
+「PR の説明文と diff へのコメントを書いて投稿します。
 
 軽量モードは数分、本気モードは別の目でのレビューと語り口判定と圧縮が入るのでそれ以上かかります。`--serious` / `--light` で強制上書きできます。
 
@@ -38,12 +38,13 @@ requires: pull-request/agents/pr-description/
 
 - `run-id` — Phase 0 で決めた今回の実行 ID。形式は `YYYYMMDD-hhmmss`
 - `body.md` — 生成した本文
-- `line-comments.json` — 行コメントの配列。1 件の形は `{path, line, numbered, text}` である
-- `reading-order.json` — Phase 3 で比べた番号コメントの順番の案と選んだ理由。中身は `{"candidates": [{"order": [...], "stumbles": [...]}], "chosen": ..., "reason": ...}` である。番号コメントが 1 件以下のときは無い
+- `line-comments.json` — コメントの配列。1 件の形は 3 つある。番号付きは `{path, numbered, text}` で、ファイル単位のコメントになる。番号なしは `{path, line, numbered, text}` で、行単位のコメントになる。`essence` 付きは番号なしの形に `essence: true` を足したもので、`text` は `本質fix` 固定である。これも行単位で、PR に 1 件までしか置けない
+- `reading-order.json` — Phase 3 で比べた番号コメントの順番の案と選んだ理由。`order` はファイルの並びである。中身は `{"candidates": [{"order": [...], "stumbles": [...]}], "chosen": ..., "reason": ...}` である。番号コメントが 1 件以下のときは無い
 - `material.md` — Phase 1 で集めた素材
 - `route.json` — Phase 0 で決めた投稿経路
 - `pr-state.json` — `create` モードで Phase 7 が作った PR の番号。中身は `{"pr_number": ...}` である。`edit` モードでは無い
 - `thrust.json` — Phase 2 で確定した主眼とついで
+- `issue-verdict.json` — Phase 1 で決めた、issue を閉じてよいかの判定。中身は `{"issues": [{"ref":..., "closure":..., "conditions":[{"text":..., "evidence":...}]}]}` である。**issue が 1 つも無いときも `{"issues": []}` として必ず書かれる**
 - `current-body.md` — Phase 0 で保存した投稿前の既存本文。`create` モード・`--overwrite` 指定時・取得失敗時には無い
 - `body-state.json` — Phase 0 で決めた既存本文の状態。中身は `{"state":..., "last_ai_edit":..., "reason":..., "broken":...}` である。**判定をスキップする `create` モードと `--overwrite` 指定時にも必ず書かれる**
 - `mode.txt` — Phase 0 で決めた `edit` / `create` のモード
@@ -66,14 +67,14 @@ requires: pull-request/agents/pr-description/
 - `body-stamped.md` — Phase 7 でマーカーを付けた投稿用本文。**投稿するのはこれ**。人に聞いて承諾が得られず更新を見送ったときは無い
 - `posted-body.md` — Phase 7 で投稿後に読み直した本文。マーカーの確認用である。本文を更新しなかったときは無い
 - `review-id.txt` — Phase 7 で投稿した review の ID。Phase 7 の投稿前に毎回削除する。今回の投稿の応答に ID が含まれていたときだけ、投稿後にできる
-- `purge-comments.json` — Phase 7 で前回の行コメントを消し、レビュー本体を非表示にした結果。中身は `{"ok":..., "deleted":..., "hidden":..., "failed":..., "failures":[...]}` である。投稿前に毎回削除する。`create` モードでは無い
-- `line-comments-post.json` — Phase 7 で印を付けた投稿用の行コメントとレビュー本体。中身は `{"review_body": ..., "comments": [{path, line, body}]}` である。**投稿するのはこれ**
+- `purge-comments.json` — Phase 7 で前回のコメントを消し、レビュー本体を非表示にした結果。中身は `{"ok":..., "deleted":..., "hidden":..., "failed":..., "failures":[...]}` である。投稿前に毎回削除する。`create` モードでは無い
+- `line-comments-post.json` — Phase 7 で印を付けた投稿用のコメントとレビュー本体。中身は `{"review_body": ..., "comments": [{path, subject_type, line, body}]}` である。番号付きは `subject_type` が `file` で `line` を持たない。番号なしは `subject_type` が `line` で `line` を持つ。**投稿するのはこれ**
 - `nav-links.json` — Phase 7 で番号コメントに移動リンクを付けた結果。中身は `{"ok":..., "total":..., "linked":..., "failed":..., "failures":[...]}` である。投稿前に毎回削除する。番号コメントを投稿しなかったときは無い
 
 ## 対象外
 
 - **コードを変更しない。** 差分の中身は直さない
-- **コード内コメントは書かない。** 意図はコードではなく diff の行コメントに置く
+- **コード内コメントは書かない。** 意図はコードではなく diff のコメントに置く
 - 既存 PR のタイトルは書き換えない。新規作成時と `--overwrite` 指定時のみセットする
 
 ## 引数
@@ -99,10 +100,10 @@ requires: pull-request/agents/pr-description/
 | Phase | 参照ファイル | 概要 |
 |---|---|---|
 | 0 | references/phase-0.md | 前提確認・モード判定・投稿経路・既存本文の判定・base/push |
-| 1 | references/phase-1.md | 素材集め |
+| 1 | references/phase-1.md | 素材集め・issue を閉じてよいかの判定 |
 | 2 | references/phase-2.md | 主眼の確定とついでの切り分け |
-| 3 | references/phase-3.md（＋ references/ai-writing.md） | 本文と行コメントの生成 |
+| 3 | references/phase-3.md（＋ references/ai-writing.md） | 本文とコメントの生成 |
 | 4 | references/phase-4.md | 装飾の除去・表層検出。スクリプトで行う |
-| 5 | references/phase-5.md | セルフレビューは 14 問・語り口の判定・圧縮。後の 2 つは前半の周回だけ |
+| 5 | references/phase-5.md | セルフレビューは 16 問・語り口の判定・圧縮。後の 2 つは前半の周回だけ |
 | 6 | references/phase-6.md | 台帳・修正・ループ判定・投稿ゲート |
 | 7 | references/phase-7.md | 投稿 |
