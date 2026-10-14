@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { armGuard, disarmGuard, readGuard } from "./guard-state.mjs";
-import { GUARDED_TOOLS, TESTING_SKILLS, handleGuard } from "./guard-hook.mjs";
+import { GUARDED_TOOLS, TESTING_SKILLS, handleGuard, renderBlock } from "./guard-hook.mjs";
 
 function withRoot(fn) {
   const root = mkdtempSync(join(tmpdir(), "spec-testing-guard-"));
@@ -175,4 +175,10 @@ test("装填後はNotebookEditでも既存テストファイルの弱体化を d
     assert.equal(out.hookSpecificOutput.permissionDecision, "deny");
     assert.match(out.hookSpecificOutput.permissionDecisionReason, /weaken-assertion/);
   });
+});
+
+test("renderBlock は対象外ではなく error として記録するよう指示する", () => {
+  const text = renderBlock({ ruleId: "add-skip", reason: "..." });
+  assert.doesNotMatch(text, /対象外/);
+  assert.match(text, /error/);
 });

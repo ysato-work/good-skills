@@ -83,17 +83,28 @@ export function armCompletion(
   return state;
 }
 
-export function recordTurn(sessionId, { blocked, advanced = 0, root = tmpdir() } = {}) {
+export function recordTurn(
+  sessionId,
+  { blocked = false, deferred = false, advanced = 0, root = tmpdir() } = {},
+) {
   const existing = readCompletion(sessionId, { root });
   if (!existing) return null;
 
-  const state = blocked
-    ? {
-        ...existing,
-        consecutiveBlocks: existing.consecutiveBlocks + 1,
-        noProgressTurns: advanced > 0 ? 0 : existing.noProgressTurns + 1,
-      }
-    : { ...existing, consecutiveBlocks: 0, noProgressTurns: 0 };
+  // deferred は「バックグラウンド待ち」で毎ターン起きうる。連続ブロックとは別軸で
+  // 数え、noProgressTurns だけ回して decide の上限で自然に stop に落とす。
+  // consecutiveBlocks はリセットも増やしもしない (deferred は block ではない)
+  let state;
+  if (deferred) {
+    state = { ...existing, noProgressTurns: advanced > 0 ? 0 : existing.noProgressTurns + 1 };
+  } else if (blocked) {
+    state = {
+      ...existing,
+      consecutiveBlocks: existing.consecutiveBlocks + 1,
+      noProgressTurns: advanced > 0 ? 0 : existing.noProgressTurns + 1,
+    };
+  } else {
+    state = { ...existing, consecutiveBlocks: 0, noProgressTurns: 0 };
+  }
 
   write(completionPath(sessionId, root), state);
   return state;

@@ -28,7 +28,7 @@ docs/superpowers/testing/<spec 名ベース>/
 
 ## cases.tsv
 
-15 列。順序は `ledger.mjs` の `CASE_COLUMNS` が正。
+16 列。順序は `ledger.mjs` の `CASE_COLUMNS` が正。
 
 | 列 | 内容 |
 |---|---|
@@ -44,6 +44,7 @@ docs/superpowers/testing/<spec 名ベース>/
 | `status` | `todo` / `pass` / `fail` / `out_of_scope` / `error` |
 | `out_of_scope_reason` | `out_of_scope` のときだけ必須。それ以外は空 |
 | `attempts` | 実行を試みた回数。初期値 0 |
+| `returns` | 証跡確認係がこのケースを差し戻した回数。初期値 0。`RETURNS_MAX` に達したら差し戻さず確定させる |
 | `evidence_path` | `evidence/T-001/`。未実行なら空 |
 | `test_code_path` | テストコードとして実装した場合のプロダクトコード側のパス。レベルを問わない |
 | `updated_at` | ISO 8601。未更新なら空 |

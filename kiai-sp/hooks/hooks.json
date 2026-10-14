@@ -46,6 +46,29 @@
             "async": false
           }
         ]
+      },
+      {
+        "matcher": "Skill|Bash|Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" worktree-guard",
+            "shell": "bash",
+            "async": false
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook.cmd\" worktree-guard",
+            "shell": "bash",
+            "async": false
+          }
+        ]
       }
     ],
     "PostToolUse": [

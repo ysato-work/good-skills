@@ -9,6 +9,9 @@ import {
   MAX_CONSECUTIVE_BLOCKS,
   NO_PROGRESS_MAX_TURNS,
   REVIEW_MAX_ROUNDS,
+  UNIT_BATCH_SIZE,
+  RETURNS_MAX,
+  WORKFLOW_MAX_ITER,
 } from "./constants.mjs";
 
 test("確信度の閾値は 50 より大きい", () => {
@@ -37,4 +40,16 @@ test("回数系の定数は 1 以上の整数", () => {
   ]) {
     assert.ok(Number.isInteger(value) && value >= 1, `${name} が ${value}`);
   }
+});
+
+test("UNIT_BATCH_SIZE は 10", () => {
+  assert.equal(UNIT_BATCH_SIZE, 10);
+});
+
+test("RETURNS_MAX は 2 (差し戻し上限)", () => {
+  assert.equal(RETURNS_MAX, 2);
+});
+
+test("WORKFLOW_MAX_ITER は 200 (workflow 周回上限)", () => {
+  assert.equal(WORKFLOW_MAX_ITER, 200);
 });

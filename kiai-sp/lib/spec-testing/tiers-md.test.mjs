@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { ALLOWED_BRANCH_PREFIX, BASH_RULES, RESOURCE_PREFIX } from "./forbidden-bash.mjs";
+import { ALLOWED_BRANCH_PREFIX, BASH_RULES } from "./forbidden-bash.mjs";
 
 const BODY = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "TIERS.md"), "utf8");
 
@@ -14,7 +14,6 @@ test("3 階層すべての見出しがある", () => {
 });
 
 test("接頭辞の規約がコードと同じ値で書かれている", () => {
-  assert.ok(BODY.includes(RESOURCE_PREFIX), `${RESOURCE_PREFIX} が書かれていない`);
   assert.ok(BODY.includes(ALLOWED_BRANCH_PREFIX), `${ALLOWED_BRANCH_PREFIX} が書かれていない`);
 });
 

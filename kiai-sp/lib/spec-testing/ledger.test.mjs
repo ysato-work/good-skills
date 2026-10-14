@@ -42,6 +42,7 @@ function aCase(over = {}) {
     status: "todo",
     out_of_scope_reason: "",
     attempts: "0",
+    returns: "0",
     evidence_path: "",
     test_code_path: "",
     updated_at: "",
@@ -52,7 +53,7 @@ function aCase(over = {}) {
 test("列の定義が契約どおり", () => {
   assert.deepEqual(CASE_COLUMNS, [
     "case_id", "level", "req_ids", "technique", "box", "title", "preconditions",
-    "steps", "expected", "status", "out_of_scope_reason", "attempts",
+    "steps", "expected", "status", "out_of_scope_reason", "attempts", "returns",
     "evidence_path", "test_code_path", "updated_at",
   ]);
   assert.deepEqual(REQUIREMENT_COLUMNS, [

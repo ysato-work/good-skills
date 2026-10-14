@@ -10,15 +10,15 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REFS = join(HERE, "references");
 const AGENTS = join(HERE, "..", "..", "agents", "executing-spec-tests");
 const SKILL = readFileSync(join(HERE, "SKILL.md"), "utf8");
-const RUNNER = readFileSync(join(AGENTS, "case-runner.md"), "utf8");
+const RUNNER = readFileSync(join(AGENTS, "batch-runner.md"), "utf8");
 
-const PHASES = [
-  "phase-0-prepare",
-  "phase-1-environment",
-  "phase-2-run-one",
-  "phase-3-record",
-  "phase-4-loop",
-  "phase-5-teardown",
+const PHASES = ["phase-0-prepare"];
+const RETIRED_PHASES = [
+  "phase-1-environment.md",
+  "phase-2-run-one.md",
+  "phase-3-record.md",
+  "phase-4-loop.md",
+  "phase-5-teardown.md",
 ];
 
 test("スキル名が S2 のガードが装填する名前と一致する", () => {
@@ -45,70 +45,29 @@ test("references に SKILL.md から参照されていないファイルが無�
 });
 
 test("エージェント定義が agents ディレクトリ側に置かれている", () => {
-  assert.ok(existsSync(join(AGENTS, "case-runner.md")));
-  assert.equal(existsSync(join(HERE, "agents", "case-runner.md")), false);
+  assert.ok(existsSync(join(AGENTS, "batch-runner.md")));
+  assert.equal(existsSync(join(HERE, "agents", "batch-runner.md")), false);
 });
 
-test("case-runner に name と description と model がある", () => {
-  assert.match(RUNNER, /^name: case-runner$/m);
+test("batch-runner に name と description と model がある", () => {
+  assert.match(RUNNER, /^name: batch-runner$/m);
   assert.match(RUNNER, /^description: .+$/m);
   assert.match(RUNNER, /^model: \w+$/m);
 });
 
-test("case-runner が返せる status が apply-result と一致している", () => {
+test("batch-runner が返せる status が apply-result と一致している", () => {
   for (const status of RESULT_STATUSES) {
-    assert.ok(RUNNER.includes(`\`${status}\``), `case-runner に ${status} の説明が無い`);
+    assert.ok(RUNNER.includes(`\`${status}\``), `batch-runner に ${status} の説明が無い`);
   }
   assert.match(RUNNER, /`out_of_scope` は返さない/);
 });
 
-test("case-runner に生出力を親へ返さない指示がある", () => {
-  assert.match(RUNNER, /テストの生出力を返さない/);
+test("batch-runner に生出力を親へ返さない指示がある", () => {
+  assert.match(RUNNER, /生ログを返さない/);
 });
 
-test("case-runner にテスト対象を修正しない指示がある", () => {
+test("batch-runner にテスト対象を修正しない指示がある", () => {
   assert.match(RUNNER, /テスト対象コードの修正/);
-});
-
-test("実行フェーズにスキップ禁止の明文と言い訳の列挙がある", () => {
-  const body = readFileSync(join(REFS, "phase-2-run-one.md"), "utf8");
-  assert.match(body, /スキップは絶対に禁止/);
-  for (const excuse of ["偽陽性", "確認済み", "リスク", "機械的", "時間がかかり", "明らかに通る"]) {
-    assert.ok(body.includes(excuse), `言い訳「${excuse}」が列挙されていない`);
-  }
-});
-
-test("実行フェーズに実施時の out_of_scope 禁止が書かれている", () => {
-  const body = readFileSync(join(REFS, "phase-2-run-one.md"), "utf8");
-  assert.match(body, /実施時に新しく対象外を作らない/);
-});
-
-test("記録フェーズが親にテスト出力を読ませない", () => {
-  const body = readFileSync(join(REFS, "phase-3-record.md"), "utf8");
-  assert.match(body, /親はログを開かない/);
-});
-
-test("ループフェーズの終了条件が検査スクリプトに委ねられている", () => {
-  const body = readFileSync(join(REFS, "phase-4-loop.md"), "utf8");
-  assert.match(body, /check-progress\.mjs/);
-  assert.match(body, /--phase execution/);
-  assert.equal(body.includes("収束"), false, "主観的な終了条件が残っている");
-});
-
-test("後始末フェーズが環境の残留を確認する", () => {
-  const body = readFileSync(join(REFS, "phase-5-teardown.md"), "utf8");
-  assert.match(body, /env-snapshot\.mjs/);
-});
-
-test("結合と E2E を足したときに単体の収集対象を確認する手順がある", () => {
-  const body = readFileSync(join(REFS, "phase-5-teardown.md"), "utf8");
-  assert.match(body, /collection-diff\.mjs/);
-});
-
-test("準備フェーズが既存のTier2資源の残留を確認する", () => {
-  const body = readFileSync(join(REFS, "phase-0-prepare.md"), "utf8");
-  assert.match(body, /env-snapshot\.mjs/);
-  assert.match(body, /spec-testing-/);
 });
 
 test("準備フェーズで目標条件の設定を促している", () => {
@@ -155,4 +114,25 @@ test("起点の確定が 6.1 より前にあり、以降は collectGit を呼び
   const collectGitCalls = (body.match(/\bm\.collectGit\(/g) ?? []).length;
   assert.equal(collectGitCalls, 1, "collectGit を複数箇所で呼んでいる。6.0 の値を使い回すこと");
   assert.ok(at63 > at60, "6.3 が 6.0 より前にある");
+});
+
+test("SKILL.md は workflow を起動する旨を含む", () => {
+  assert.match(SKILL, /workflow/i);
+  for (const name of RETIRED_PHASES) {
+    assert.equal(SKILL.includes(name), false, `SKILL.md に ${name} への参照が残っている`);
+  }
+});
+
+test("SKILL.md は Workflow 不採用時の理由を含まない (採用したので)", () => {
+  assert.equal(SKILL.includes("workflow 化しない理由"), false);
+});
+
+test("references/ から phase-1〜5 のファイルが消えている", () => {
+  for (const name of RETIRED_PHASES) {
+    assert.equal(existsSync(join(REFS, name)), false, `${name} が残っている`);
+  }
+});
+
+test("references/workflow-invocation.md が存在する", () => {
+  assert.equal(existsSync(join(REFS, "workflow-invocation.md")), true);
 });

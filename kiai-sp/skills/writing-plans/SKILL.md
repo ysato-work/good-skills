@@ -13,7 +13,36 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 **Announce at start:** "I'm using the writing-plans skill to create the implementation plan."
 
-**Context:** If working in an isolated worktree, it should have been created via the `superpowers:using-git-worktrees` skill at execution time.
+**Context:** If working in an isolated worktree, it should have been created via the `kiai-sp:using-git-worktrees` skill at execution time.
+
+**計画書を書き始める前に、作業するブランチを決める。** 計画書は git にコミットするので、どのブランチに載るかを先に決めておく必要がある。
+
+### 作業するブランチの決め方
+
+始める前に、いまいるブランチを見る。
+
+| いまいるブランチ | すること |
+|---|---|
+| trunk 系のブランチ | `kiai-sp:using-git-worktrees` を呼び、ワークツリーを切って、そこで作業する |
+| trunk 系以外のブランチ | そのブランチで作業する。ワークツリーは切らない |
+
+trunk 系と見なすのは `main` `master` `develop` `trunk`、およびそのリポジトリの既定ブランチである。いまいるブランチの名前が取れない場合（リベースの途中など）は trunk 系として扱う。
+
+```bash
+git branch --show-current
+```
+
+既定ブランチは次のとおりに調べる。クローンの仕方によっては 1 つ目が空を返すので、そのときは 2 つ目に落とす。2 つ目はリモートに問い合わせるため、ネットワークが要る。
+
+```bash
+default_branch=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+[ -n "$default_branch" ] || default_branch=$(git remote show origin 2>/dev/null | sed -n 's/.*HEAD branch: //p')
+echo "$default_branch"
+```
+
+2 つとも空を返した場合は、既定ブランチが分からないということなので、上の 4 つの名前だけで判定する。
+
+末尾の Execution Handoff にある同じ趣旨の記述は、実装を始めるときの話である。こちらは計画書を書き始めるときの話で、別の場面である。どちらも残す。ただし Execution Handoff が `main` とだけ書いている箇所は、上の trunk 系の定義に読み替える。`develop` などにいるときに、計画づくりの側と実装の側で判定が食い違わないようにするためである。
 
 **Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<Japanese topic>.md`
 - (User preferences for plan location override this default)
@@ -33,6 +62,10 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
   from `/`, not a relative path and not a `<work-root>/…` placeholder, so they
   can open it straight from an editor or terminal. This is deliberately the
   opposite of the in-document rule above.
+
+## 既存の spec を読む
+
+計画書を書き始める前に、元になる spec に加えて、関連する既存の spec を `docs/superpowers/specs/` から探して読む。
 
 ## Scope Check
 
@@ -90,13 +123,15 @@ Tasks whose deliverable is not code — documentation, configuration, prompt tex
 ```markdown
 # [Feature Name] Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use kiai-sp:subagent-driven-development (recommended) or kiai-sp:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** [One sentence describing what this builds]
 
 **Architecture:** [2-3 sentences about approach]
 
 **Tech Stack:** [Key technologies/libraries]
+
+**パスの読み方:** この計画書の `<work-root>` は、実行時に `git rev-parse --show-toplevel` が返す値に置き換えて読む。`<repo-root>` は `git worktree list --porcelain` の先頭の `worktree` 行が示す値に置き換えて読む。
 
 ## Global Constraints
 
@@ -190,6 +225,88 @@ plan を書くときは、実行するエージェントが動くハーネスの
 - 置き換えられない場合は、**plan の冒頭に「実行前に人間の承認が必要な手順」を独立セクションとして明示**し、対応するタスクにその旨を書くこと。実行中のエージェントが不意に人間承認待ちで止まる状態にしないこと。
 - 判断の根拠になった設定・フックの実在確認は、plan の Decisions セクションに残すこと。
 
+**人間が実施する作業:**
+
+- 人間が実施する作業を plan に書く場合は、書く前に人間と合意を取ること。
+- 人間の作業は最小限にすること。plan の実行中（subagent-driven-development などで実装している間）は、人間が作業を手伝いにくいためである。
+- どうしても必要な場合は、なるべく 1 つの作業ステップの中にまとめること。
+
+## 複数の PR に分ける場合
+
+設計書に「この作業自体の進め方」という節があり、複数の計画書に分けると書かれていれば、この作業は複数の PR に分けて積み上げる。無ければこの節は関係ない。この節を読み飛ばし、次の見出し（「積み上げたときのブランチ名」）から読む。
+
+### 計画書を全部出す
+
+**1 回の起動で、設計書に書かれた本数の計画書を全部出す。** 1 本ずつ起動し直す形にしない。
+
+ファイル名は `docs/superpowers/plans/YYYY-MM-DD-<話題>-<番号>-<その計画書が何をするか>.md` とする。番号は下から順に 1、2、3 である。設計書に書かれた順番をそのまま使う。末尾はブランチ名の担当範囲と同じでなくてよい。ファイル名は人が一覧で見て中身が分かればよい。
+
+各計画書には、対応するブランチ名を書く。ブランチ名の形は下の「積み上げたときのブランチ名」に従う。実装のスキルはここに書かれた名前を使うため、書き漏らすと実装が止まる。
+
+各計画書の Global Constraints には、設計書の「必ず守ること」の中身をそのまま写す。要約しない。
+
+### レビュー役の立て方
+
+- **初回は 1 体にまとめて出す。** 5 本なら 5 本ぶんを 1 体のサブエージェントに見せる。1 本に 1 体を立てない
+- **再レビューは、直した計画書だけを対象にする。** 5 本のうち 2 本を直したなら、その 2 本だけを出す。直していない 3 本は見直さない
+- **再レビューも 1 体にまとめる。** 2 本を直したなら、その 2 本を 1 体のサブエージェントに見せる。1 本に 1 体を立てない
+
+検査の記録はファイルごとに残す。直していない計画書の記録は、そのファイルの中身が変わっていない限りそのまま有効である。
+
+### 書き終えたら聞くこと
+
+計画書を全部書き終えた時点で、人に 1 つ聞く。「1 本目の PR だけ先に出しますか」。
+
+ここが、1 本目の中身が出揃っていて、かつ実装がまだ始まっていない唯一の場所である。
+
+- **はい** — `kiai-sp:finishing-a-development-branch` を 1 回走らせてから、実装に入る。この起動でも、仕上げのスキルは 3 つの選択肢をいつもどおり出す。選択肢は起動のしかたで変わらない。以下が効くのは、PR を作る選択肢が選ばれたときだけである。命名の規則・下書きにしないこと・説明文を書くスキルを走らせることは、最後のまとめて作る起動と同じである。タイトルは `<話題> (1/M) - <タイトル>` になる。`M` は計画書を全部書き終えた時点で分かっているので確定できる。「PR を作る前に止まる場面」はこの起動では通らない
+- **いいえ** — そのまま実装に入る。PR は全部の実装が終わってからまとめて作る
+
+### 実装に渡すとき
+
+計画書が複数ある場合、実装のスキルには 1 本ずつ順に渡す。下から順である。計画書と計画書の境目では止まらない。全部終わってから報告する。
+
+## 積み上げたときのブランチ名
+
+複数の PR に分けて積み上げる場合に限り、各計画書に対応するブランチの名前を計画書に書く。分けない場合はこの節は関係ない。
+
+ブランチ名は次の 4 つを並べる。
+
+```
+<話題>  <番号>  <具体名>  <担当範囲>
+```
+
+- **話題** — その作業が属する範囲。意図的に粗くしてよい。粗くすると関連する作業が一覧で固まって見える
+- **番号** — 下から順に 1、2、3。PR のタイトルに入れる番号と揃える
+- **具体名** — この作業を指す名前。話題を粗く取ったとき、担当範囲だけでは何の開発か分からなくなるので、ここで補う
+- **担当範囲** — そのブランチが受け持つもの。1 本目は `specs` とする
+
+区切り方は実施先リポジトリに合わせる。次の順で決める。
+
+1. 実施先リポジトリの CLAUDE.md にブランチ名の指示があれば、それが最優先
+2. 無ければ、マージコミットのメッセージとリモートのブランチ一覧から過去のブランチ名を拾い、そこで使われている形に合わせる
+3. `claude/` で始まるブランチ名は道具が自動で付けたものなので、参考から外す
+4. 1 も 2 も手掛かりを与えない場合は、スラッシュ区切りを既定とする
+
+```bash
+git log --merges --format='%s' -n 60
+git branch -r
+```
+
+話題と残りの間の区切りだけが、上の 1〜4 で決まる。番号・具体名・担当範囲の間は常にハイフンで繋ぐ。
+
+```
+スラッシュ区切りの流儀   billing/1-invoice-pdf-specs
+                        billing/2-invoice-pdf-api
+                        billing/3-invoice-pdf-ui
+
+ハイフンだけの流儀       billing-1-invoice-pdf-specs
+                        billing-2-invoice-pdf-api
+                        billing-3-invoice-pdf-ui
+```
+
+**この節の規則が、`kiai-sp:gh-stack` スキルに書かれているブランチ名の記述より優先する。** あちらは取り込んだままで改変しないため記述が残るが、食い違った場合はこちらに従う。あちらはスタックを作るコマンドのために読む。
+
 ## Self-Review
 
 After writing the complete plan, look at the spec with fresh eyes and check the plan against it.
@@ -263,9 +380,9 @@ State the working branch in the same message:
 The choice of execution mode remains the user's. Present both options and wait.
 
 **If Subagent-Driven chosen:**
-- **REQUIRED SUB-SKILL:** Use superpowers:subagent-driven-development
+- **REQUIRED SUB-SKILL:** Use kiai-sp:subagent-driven-development
 - Fresh subagent per task + two-stage review
 
 **If Inline Execution chosen:**
-- **REQUIRED SUB-SKILL:** Use superpowers:executing-plans
+- **REQUIRED SUB-SKILL:** Use kiai-sp:executing-plans
 - Batch execution with checkpoints for review

@@ -24,13 +24,19 @@
  * ガードの実装を直接書き換えて自分を無効化できてしまう。テストファイル
  * （*.test.mjs）はこの対象から除く。テストを書くこと自体を禁止すべきではないため。
  *
+ * 台帳 TSV (cases.tsv / requirements.tsv) への直接 Write/Edit も止める。エスケープ
+ * は tsv.mjs の serializeTsv でしか保証されない。LLM が直接書くと steps や expected
+ * の改行が生のまま入り、次回パースで列数が合わずに全体が読めなくなる。
+ *
  * export:
  *   SKIP_MARKERS / ASSERTION_RE / TEST_FILE_RE
  *   isCiConfig(filePath) / isTestFile(filePath) / isGuardImplementationFile(filePath) /
- *   countAssertions(text)
+ *   isLedgerTsv(filePath) / countAssertions(text)
  *   classifyFile({ filePath, oldString, newString, content }) → { blocked, ruleId, reason }
  */
 import { CI_PATH } from "./forbidden-bash.mjs";
+import { SCRIPT_EXTENSIONS } from "./delivery-check.mjs";
+import { extname } from "node:path";
 
 export const SKIP_MARKERS = [
   /\b(?:it|test|describe|context|suite)\.skip\s*\(/,
@@ -55,6 +61,13 @@ export const TEST_FILE_RE =
 const GUARD_IMPLEMENTATION_RE =
   /(?:^|\/)kiai-sp\/lib\/spec-testing\/(?!.*\.test\.mjs$)[^/]+\.mjs$|(?:^|\/)kiai-sp\/hooks\/hooks\.json$|(?:^|\/)kiai-sp\/hooks\/testing-guard$/;
 
+// 台帳 TSV は tsv.mjs の serializeTsv 経由でしかエスケープが保証されない。
+// LLM の Write/Edit で直接書くと steps や expected の改行が生のまま入り TSV が壊れる。
+// 書き込みは build-ledger / reflect-batch / return-case / recovery (すべて Node) に限定する。
+// i フラグ: case-insensitive FS (macOS default / Windows) で "CASES.TSV" 経由の
+// ガード回避を塞ぐ。case-sensitive FS では別ファイル扱いだが、両対応にしておく
+const LEDGER_TSV_RE = /(?:^|\/)(?:cases|requirements)\.tsv$/i;
+
 export function isCiConfig(filePath) {
   return CI_PATH.test(`/${String(filePath).replace(/^\/+/, "")}`);
 }
@@ -67,6 +80,25 @@ export function isTestFile(filePath) {
 export function isGuardImplementationFile(filePath) {
   const normalized = String(filePath).replace(/\\/g, "/").replace(/^\/+/, "");
   return GUARD_IMPLEMENTATION_RE.test(normalized);
+}
+
+export function isLedgerTsv(filePath) {
+  return LEDGER_TSV_RE.test(String(filePath).replace(/\\/g, "/"));
+}
+
+/**
+ * 証跡ディレクトリの中で、fixtures 配下でなく、SCRIPT_EXTENSIONS の拡張子を持つ書き込みか。
+ * evidence/<case_id>/ の直下または fixtures 以外のサブディレクトリを対象にする。
+ * fixtures 配下と、evidence 外 (本来のソースコード置き場) は対象外。
+ */
+export function isEvidenceSourceCode(filePath) {
+  const normalized = String(filePath).replace(/\\/g, "/");
+  const m = normalized.match(/(?:^|\/)evidence\/[^/]+\/(.+)$/);
+  if (!m) return false;
+  const rest = m[1];
+  if (rest.startsWith("fixtures/")) return false;
+  const ext = extname(rest).toLowerCase();
+  return SCRIPT_EXTENSIONS.includes(ext);
 }
 
 export function countAssertions(text) {
@@ -144,6 +176,22 @@ export function classifyFile({ filePath = "", oldString = "", newString = "", co
       blocked: true,
       ruleId: "guard-self-protect",
       reason: "ガード自身の実装・設定ファイルは変更しない",
+    };
+  }
+
+  if (isLedgerTsv(filePath)) {
+    return {
+      blocked: true,
+      ruleId: "ledger-tsv",
+      reason: "台帳 TSV (cases.tsv / requirements.tsv) は build-ledger / reflect-batch / return-case / recovery の Node 経由でしか書けない。直接 Write/Edit するとエスケープが飛んで TSV が壊れる",
+    };
+  }
+
+  if (isEvidenceSourceCode(filePath)) {
+    return {
+      blocked: true,
+      ruleId: "evidence-source-code",
+      reason: "証跡ディレクトリにソースコードの拡張子で書けない。内容を残すなら .txt にする",
     };
   }
 

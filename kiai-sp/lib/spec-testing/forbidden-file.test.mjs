@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { classifyFile, countAssertions, isCiConfig, isTestFile } from "./forbidden-file.mjs";
+import {
+  classifyFile,
+  countAssertions,
+  isCiConfig,
+  isLedgerTsv,
+  isTestFile,
+} from "./forbidden-file.mjs";
 
 function blockedBy(input) {
   const v = classifyFile(input);
@@ -222,4 +228,85 @@ test("ガード自身のテストファイル(*.test.mjs)への変更は通常�
 
 test("isTestFile はRubyのspecファイルも見分ける", () => {
   assert.equal(isTestFile("spec/models/user_spec.rb"), true);
+});
+
+test("証跡ディレクトリに .mjs を書こうとすると止まる", () => {
+  const v = classifyFile({
+    filePath: "docs/superpowers/testing/some-spec/evidence/T-001/helper.mjs",
+    content: "export const x = 1;",
+  });
+  assert.equal(v.blocked, true);
+  assert.equal(v.ruleId, "evidence-source-code");
+});
+
+test("証跡ディレクトリに .py を書こうとすると止まる", () => {
+  const v = classifyFile({
+    filePath: "docs/superpowers/testing/some-spec/evidence/T-001/tool.py",
+    content: "print(1)",
+  });
+  assert.equal(v.blocked, true);
+});
+
+test("evidence/T-001/fixtures 配下の .mjs は止まらない", () => {
+  const v = classifyFile({
+    filePath: "docs/superpowers/testing/some-spec/evidence/T-001/fixtures/data.mjs",
+    content: "export const d = 1;",
+  });
+  assert.equal(v.blocked, false);
+});
+
+test("evidence 配下の .txt は止まらない", () => {
+  const v = classifyFile({
+    filePath: "docs/superpowers/testing/some-spec/evidence/T-001/note.txt",
+    content: "memo",
+  });
+  assert.equal(v.blocked, false);
+});
+
+test("evidence 配下の .md は止まらない", () => {
+  const v = classifyFile({
+    filePath: "docs/superpowers/testing/some-spec/evidence/T-001/commands.md",
+    content: "# commands",
+  });
+  assert.equal(v.blocked, false);
+});
+
+test("evidence 配下でない .mjs は止まらない (本来のソースコード置き場)", () => {
+  const v = classifyFile({
+    filePath: "src/lib/impl.mjs",
+    content: "export const y = 1;",
+  });
+  assert.equal(v.blocked, false);
+});
+
+test("isLedgerTsv は cases.tsv / requirements.tsv を見分ける", () => {
+  assert.equal(isLedgerTsv("docs/superpowers/testing/x/cases.tsv"), true);
+  assert.equal(isLedgerTsv("docs/superpowers/testing/x/requirements.tsv"), true);
+  assert.equal(isLedgerTsv("cases.tsv"), true);
+  assert.equal(isLedgerTsv("docs/superpowers/testing/x/cases.tsv.bak"), false);
+  assert.equal(isLedgerTsv("docs/superpowers/testing/x/other.tsv"), false);
+});
+
+test("isLedgerTsv は大文字パスも見分ける (case-insensitive FS 対策)", () => {
+  assert.equal(isLedgerTsv("docs/superpowers/testing/x/CASES.TSV"), true);
+  assert.equal(isLedgerTsv("docs/superpowers/testing/x/Requirements.Tsv"), true);
+});
+
+test("cases.tsv への直接 Write は止まる", () => {
+  const v = classifyFile({
+    filePath: "docs/superpowers/testing/some-spec/cases.tsv",
+    content: "case_id\tlevel\nT-001\tunit\n",
+  });
+  assert.equal(v.blocked, true);
+  assert.equal(v.ruleId, "ledger-tsv");
+});
+
+test("requirements.tsv への直接 Edit は止まる", () => {
+  const v = classifyFile({
+    filePath: "docs/superpowers/testing/some-spec/requirements.tsv",
+    oldString: "R-001\told",
+    newString: "R-001\tnew",
+  });
+  assert.equal(v.blocked, true);
+  assert.equal(v.ruleId, "ledger-tsv");
 });

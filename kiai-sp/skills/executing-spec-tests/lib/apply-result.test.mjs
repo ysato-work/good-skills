@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { MAX_ATTEMPTS } from "../../../lib/spec-testing/constants.mjs";
 import { readCases, writeCases } from "../../../lib/spec-testing/ledger.mjs";
 import { casesPath, evidenceDir } from "../../../lib/spec-testing/paths.mjs";
+import { renderCommands } from "../../../lib/spec-testing/evidence.mjs";
 import {
   applyResult,
   assertResultStatus,
@@ -40,7 +41,12 @@ function withArtifactDir(rows, fn, { evidenceFor = [] } = {}) {
     writeCases(casesPath(dir), rows);
     for (const id of evidenceFor) {
       mkdirSync(evidenceDir(dir, id), { recursive: true });
-      writeFileSync(join(evidenceDir(dir, id), "commands.md"), "# T 実行コマンド\n", "utf8");
+      writeFileSync(
+        join(evidenceDir(dir, id), "commands.md"),
+        renderCommands(id, [{ command: "test", exitCode: 0, logFile: "1-test.log" }]),
+        "utf8",
+      );
+      writeFileSync(join(evidenceDir(dir, id), "1-test.log"), "ok\n", "utf8");
     }
     fn(dir);
   } finally {
@@ -172,4 +178,27 @@ test("applyResult は書き戻した台帳を S1 の形式のまま保つ", () =
     applyResult(dir, "T-001", { status: "pass" }, {});
     assert.equal(readCases(casesPath(dir))[0].steps, steps);
   }, { evidenceFor: ["T-001"] });
+});
+
+test("applyResult: commands.md はあるが空だと証跡なし扱い", () => {
+  withArtifactDir([row()], (dir) => {
+    mkdirSync(evidenceDir(dir, "T-001"), { recursive: true });
+    writeFileSync(join(evidenceDir(dir, "T-001"), "commands.md"), "", "utf8");
+    const r = applyResult(dir, "T-001", { status: "pass" });
+    assert.equal(r.downgraded, true);
+  });
+});
+
+test("applyResult: commands.md はあるが参照ログが無いと証跡なし扱い", () => {
+  withArtifactDir([row()], (dir) => {
+    mkdirSync(evidenceDir(dir, "T-001"), { recursive: true });
+    writeFileSync(
+      join(evidenceDir(dir, "T-001"), "commands.md"),
+      renderCommands("T-001", [{ command: "x", exitCode: 0, logFile: "missing.log" }]),
+      "utf8",
+    );
+    // missing.log は書かない
+    const r = applyResult(dir, "T-001", { status: "pass" });
+    assert.equal(r.downgraded, true);
+  });
 });

@@ -42,6 +42,7 @@ export const CASE_COLUMNS = [
   "status",
   "out_of_scope_reason",
   "attempts",
+  "returns",
   "evidence_path",
   "test_code_path",
   "updated_at",
