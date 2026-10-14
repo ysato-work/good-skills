@@ -1,0 +1,5 @@
+{
+  "type": "module",
+  "private": true,
+  "description": "取り込んだ get-east-asian-width v1.7.0。この階層の .js を ESM として読ませるためだけの package.json。依存はない。"
+}

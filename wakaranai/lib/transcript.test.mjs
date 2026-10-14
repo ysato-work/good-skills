@@ -7,7 +7,7 @@ import { resolveTranscriptPath, readEntries, selectEntries, parseArgs, formatTex
 
 function makeHome() {
   const home = mkdtempSync(join(tmpdir(), "kimoi-test-"));
-  const dir = join(home, ".claude", "projects", "-home-user-dot-claude");
+  const dir = join(home, ".claude", "projects", "-home-user-my-project");
   mkdirSync(dir, { recursive: true });
   return { home, dir };
 }
@@ -19,7 +19,7 @@ test("作業ディレクトリと環境変数のセッション ID から読む 
     writeFileSync(mine, "");
     assert.equal(
       resolveTranscriptPath({
-        cwd: "/home/user/dot-claude",
+        cwd: "/home/user/my-project",
         home,
         env: { CLAUDE_CODE_SESSION_ID: "48ec8511-ef91-5bb5-9580-4b295a3292b7" },
       }),
@@ -42,7 +42,7 @@ test("別セッションのファイルが後から更新されていても、�
 
     assert.equal(
       resolveTranscriptPath({
-        cwd: "/home/user/dot-claude",
+        cwd: "/home/user/my-project",
         home,
         env: { CLAUDE_CODE_SESSION_ID: "aaaaaaaa-0000-0000-0000-000000000000" },
       }),
@@ -63,7 +63,7 @@ test("サブディレクトリに同じ名前があっても直下のものを�
     writeFileSync(top, "");
 
     assert.equal(
-      resolveTranscriptPath({ cwd: "/home/user/dot-claude", home, sessionId: id }),
+      resolveTranscriptPath({ cwd: "/home/user/my-project", home, sessionId: id }),
       top,
     );
   } finally {
@@ -82,7 +82,7 @@ test("セッション ID のファイルが無ければエラーを投げる", (
   const { home } = makeHome();
   try {
     assert.throws(
-      () => resolveTranscriptPath({ cwd: "/home/user/dot-claude", home, sessionId: "dddddddd" }),
+      () => resolveTranscriptPath({ cwd: "/home/user/my-project", home, sessionId: "dddddddd" }),
       /no transcript for session dddddddd/,
     );
   } finally {
@@ -95,7 +95,7 @@ test("セッション ID もファイル指定も無ければ、推測で選ば�
   try {
     writeFileSync(join(dir, "eeeeeeee.jsonl"), "");
     assert.throws(
-      () => resolveTranscriptPath({ cwd: "/home/user/dot-claude", home, env: {} }),
+      () => resolveTranscriptPath({ cwd: "/home/user/my-project", home, env: {} }),
       /CLAUDE_CODE_SESSION_ID/,
     );
   } finally {
