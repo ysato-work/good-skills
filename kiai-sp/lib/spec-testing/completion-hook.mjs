@@ -68,19 +68,33 @@ export function handleVerify(input, opts = {}) {
   if (!state) return null;
 
   const artifactDir = resolveArtifactDir(input?.cwd ?? ".");
-  if (!artifactDir) return null;
+  if (!artifactDir) {
+    // 装填中に成果物ディレクトリを特定できないのは異常。fail-open で通すと
+    // 「残件があるのに正常終了」を見逃す。block に倒し、consecutiveBlocks が
+    // 上限に達したら Claude Code 側で上書きされて自然に降りる
+    recordTurn(input?.session_id, { blocked: true, advanced: 0, ...opts });
+    return {
+      decision: "block",
+      reason:
+        "テストスキル装填中に成果物ディレクトリ (docs/superpowers/testing/*/cases.tsv) を特定できない。cwd を確認するか、成果物ディレクトリを作成してから終了すること。",
+    };
+  }
 
   const check = runCheck({ dir: artifactDir, phase: state.phase });
   let progress = { total: 0, todo: 0, pass: 0, fail: 0, error: 0, out_of_scope: 0, reasons: [] };
+  let checkCode = check.code;
   try {
     if (check.stdout) progress = JSON.parse(check.stdout);
   } catch {
-    // 読めなくても既定値で報告する。ここで throw するとターン終了が壊れる。
+    // parse できない = check-progress の出力が壊れている = 台帳が壊れている扱いにして
+    // stop へ落とす (checkCode 2 は decide が「台帳を検査できなかった」stop に変換する)。
+    // ここで throw するとターン終了が壊れる
+    checkCode = 2;
   }
 
   const advanced = Number.isInteger(progress.advanced_this_turn) ? progress.advanced_this_turn : 0;
   const delivered = state.phase === "execution" ? isDelivered(artifactDir) : true;
-  const verdict = decide({ state, checkCode: check.code, advanced, inFlight: inFlightCount(input), delivered });
+  const verdict = decide({ state, checkCode, advanced, inFlight: inFlightCount(input), delivered });
 
   if (verdict.action === "allow") {
     recordTurn(input?.session_id, { blocked: false, advanced, ...opts });
@@ -88,6 +102,7 @@ export function handleVerify(input, opts = {}) {
   }
 
   if (verdict.action === "defer") {
+    recordTurn(input?.session_id, { deferred: true, advanced, ...opts });
     return { systemMessage: `バックグラウンド待ちのため完走の検証を保留: ${verdict.reason}` };
   }
 

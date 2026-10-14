@@ -13,9 +13,9 @@
  * 装填判定 (armSkillNameOf) と deny 判定 (skillNameOf) でスキル名の
  * 解決方法が異なる。装填は `kiai-sp:` 接頭辞を必須にし、他プラグインの
  * 同名スキル（例: `superpowers:brainstorming`）で誤って装填しない。
- * 一方、deny 判定は引き続きプラグイン接頭辞を落として比較する。
- * `writing-plans/SKILL.md` が `superpowers:subagent-driven-development` を
- * 参照しているため、ここで接頭辞を要求すると deny 判定が機能しなくなる。
+ * 一方、deny 判定はプラグイン接頭辞を落として比較する。他プラグインの同名の
+ * 実装スキル（例: `superpowers:subagent-driven-development`）から実装に入る
+ * 場合も、plan のレビュー記録が無ければ止めるためである。
  *
  * export:
  *   skillNameOf(input)        → プラグイン接頭辞を落としたスキル名（deny 判定用）
@@ -42,7 +42,9 @@ export const ARM_SKILLS = ["brainstorming", "writing-plans"];
 export const GATED_SKILLS = ["subagent-driven-development", "executing-plans"];
 export const RECORDED_TOOLS = ["Write", "Edit"];
 const ARM_PLUGIN_PREFIX = "kiai-sp:";
-const REVIEW_RECORD_PATH = fileURLToPath(new URL("./review-record.mjs", import.meta.url));
+const REVIEW_RECORD_PATH = fileURLToPath(
+  new URL("./review-record.mjs", import.meta.url),
+);
 
 export function skillNameOf(input) {
   const raw = input?.tool_input?.skill ?? "";
@@ -51,7 +53,9 @@ export function skillNameOf(input) {
 
 export function armSkillNameOf(input) {
   const raw = String(input?.tool_input?.skill ?? "");
-  return raw.startsWith(ARM_PLUGIN_PREFIX) ? raw.slice(ARM_PLUGIN_PREFIX.length) : "";
+  return raw.startsWith(ARM_PLUGIN_PREFIX)
+    ? raw.slice(ARM_PLUGIN_PREFIX.length)
+    : "";
 }
 
 export function renderFailures(failures) {
@@ -61,6 +65,7 @@ export function renderFailures(failures) {
     "",
     "各ファイルについてスキル定義のセルフレビュー観点を実施し、",
     `${REVIEW_RECORD_PATH} の write サブコマンドで記録を書いてから再度終了すること。`,
+    "決してサブエージェント承認なしで記録をつけてはならない",
   ].join("\n");
 }
 
@@ -71,7 +76,9 @@ export function renderFailures(failures) {
  * 想定外の型で届いた場合はいずれも 0 件として扱い、従来どおり block させる。
  */
 export function inFlightCount(input) {
-  return Array.isArray(input?.background_tasks) ? input.background_tasks.length : 0;
+  return Array.isArray(input?.background_tasks)
+    ? input.background_tasks.length
+    : 0;
 }
 
 export function renderDeferral(failures) {
@@ -145,7 +152,11 @@ export function handleVerify(input, opts = {}) {
 if (process.argv[1]?.endsWith("gate-hook.mjs")) {
   const mode = process.argv[2];
   const input = JSON.parse(readFileSync(0, "utf8"));
-  const HANDLERS = { arm: handleArm, record: handleRecord, verify: handleVerify };
+  const HANDLERS = {
+    arm: handleArm,
+    record: handleRecord,
+    verify: handleVerify,
+  };
   const output = (HANDLERS[mode] ?? handleVerify)(input);
 
   if (output) process.stdout.write(JSON.stringify(output));

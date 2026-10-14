@@ -14,7 +14,9 @@
  *
  * export:
  *   GUARD_DIR_NAME
- *   guardPath(sessionId, root)   → state ファイルの絶対パス
+ *   guardPath(sessionId, root, dirName) → state ファイルの絶対パス
+ *
+ * dirName を変えると別のガードの記録として扱える。worktree-guard.mjs が使う。
  *   readGuard(sessionId, opts)   → { armedAt } | null
  *   armGuard(sessionId, opts)    → { armedAt }
  *   disarmGuard(sessionId, opts) → void
@@ -26,13 +28,13 @@ import { dirname, join } from "node:path";
 
 export const GUARD_DIR_NAME = "kiai-sp-testing-guard";
 
-export function guardPath(sessionId, root = tmpdir()) {
-  return join(root, GUARD_DIR_NAME, `${sessionId}.json`);
+export function guardPath(sessionId, root = tmpdir(), dirName = GUARD_DIR_NAME) {
+  return join(root, dirName, `${sessionId}.json`);
 }
 
-export function readGuard(sessionId, { root = tmpdir() } = {}) {
+export function readGuard(sessionId, { root = tmpdir(), dirName = GUARD_DIR_NAME } = {}) {
   if (!sessionId) return null;
-  const path = guardPath(sessionId, root);
+  const path = guardPath(sessionId, root, dirName);
   if (!existsSync(path)) return null;
   try {
     const parsed = JSON.parse(readFileSync(path, "utf8"));
@@ -43,11 +45,14 @@ export function readGuard(sessionId, { root = tmpdir() } = {}) {
   }
 }
 
-export function armGuard(sessionId, { now = new Date().toISOString(), root = tmpdir() } = {}) {
-  const existing = readGuard(sessionId, { root });
+export function armGuard(
+  sessionId,
+  { now = new Date().toISOString(), root = tmpdir(), dirName = GUARD_DIR_NAME } = {},
+) {
+  const existing = readGuard(sessionId, { root, dirName });
   const state = { armedAt: existing?.armedAt ?? now };
 
-  const path = guardPath(sessionId, root);
+  const path = guardPath(sessionId, root, dirName);
   mkdirSync(dirname(path), { recursive: true });
   const tmp = `${path}.${randomUUID()}.tmp`;
   writeFileSync(tmp, JSON.stringify(state), "utf8");
@@ -56,6 +61,6 @@ export function armGuard(sessionId, { now = new Date().toISOString(), root = tmp
   return state;
 }
 
-export function disarmGuard(sessionId, { root = tmpdir() } = {}) {
-  rmSync(guardPath(sessionId, root), { force: true });
+export function disarmGuard(sessionId, { root = tmpdir(), dirName = GUARD_DIR_NAME } = {}) {
+  rmSync(guardPath(sessionId, root, dirName), { force: true });
 }

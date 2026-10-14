@@ -34,3 +34,13 @@ export const NO_PROGRESS_MAX_TURNS = 3;
 
 /** S5 の連続ブロック上限。8 に達すると Claude Code 側に上書きされるので必ず 8 未満 */
 export const MAX_CONSECUTIVE_BLOCKS = 6;
+
+/** 単体テストの 1 体あたりのまとまり件数。1 にすると 1 ケース 1 体になる */
+export const UNIT_BATCH_SIZE = 10;
+
+/** 証跡確認係が同じケースを差し戻せる上限 */
+export const RETURNS_MAX = 2;
+
+/** workflow の周回上限。unit は 1 周 10 件バッチなので 200 で 2000 件まで、
+ * integration/e2e は 1 周 1 件なので 200 件まで 1 周期で処理できる */
+export const WORKFLOW_MAX_ITER = 200;

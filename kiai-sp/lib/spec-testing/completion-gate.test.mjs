@@ -74,6 +74,17 @@ test("バックグラウンド作業中は保留する", () => {
   assert.equal(d.action, "defer");
 });
 
+test("バックグラウンド待ちが上限まで続いたら stop に切り替わる", () => {
+  const d = decide({
+    state: state({ noProgressTurns: NO_PROGRESS_MAX_TURNS - 1 }),
+    checkCode: 1,
+    advanced: 0,
+    inFlight: 1,
+  });
+  assert.equal(d.action, "stop");
+  assert.match(d.reason, /バックグラウンド待ち/);
+});
+
 test("完了していれば素通しする", () => {
   assert.equal(decide({ state: state(), checkCode: 0, advanced: 0, inFlight: 0 }).action, "allow");
 });

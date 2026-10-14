@@ -45,6 +45,7 @@ export function toCaseRows(cases) {
     status: c.status ?? "todo",
     out_of_scope_reason: c.status === "out_of_scope" ? (c.out_of_scope_reason ?? "") : "",
     attempts: "0",
+    returns: "0",
     evidence_path: "",
     test_code_path: "",
     updated_at: "",

@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RECORDED_TOOLS } from "../lib/gate-hook.mjs";
 import { GUARDED_TOOLS } from "../lib/spec-testing/guard-hook.mjs";
+import { disarmGuard } from "../lib/spec-testing/guard-state.mjs";
+import { EDIT_TOOLS, GUARD_DIR } from "../lib/worktree-guard.mjs";
 
 const HOOKS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -129,4 +132,90 @@ test("装填が無いセッションで testing-guard は何も出力しない",
     tool_input: { command: "git push --force origin main" },
   });
   assert.equal(out, "");
+});
+
+test("PreToolUse の 4 つ目と UserPromptSubmit に worktree ガードが載っている", () => {
+  const config = JSON.parse(readFileSync(join(HOOKS_DIR, "hooks.json"), "utf8"));
+  const entry = config.hooks.PreToolUse[3];
+  assert.ok(entry, "PreToolUse に worktree ガードのエントリが無い");
+  assert.deepEqual(entry.matcher.split("|").sort(), ["Bash", "Skill", ...EDIT_TOOLS].sort());
+  assert.match(entry.hooks[0].command, /run-hook\.cmd" worktree-guard/);
+  assert.match(config.hooks.UserPromptSubmit[0].hooks[0].command, /run-hook\.cmd" worktree-guard/);
+});
+
+// 本物の git リポジトリと、そこから切った worktree を一時フォルダに作り、
+// フックの入口から判定までを通しで確かめる。
+function withRepo(fn) {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), "worktree-guard-e2e-")));
+  const main = join(base, "main");
+  const wt = join(base, "wt");
+  const git = (cwd, ...args) =>
+    execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], {
+      cwd,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@example.com",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@example.com",
+      },
+    });
+  const sessions = [];
+  const session = (name) => {
+    const id = `hooks-test-worktree-guard-${process.pid}-${name}`;
+    sessions.push(id);
+    return id;
+  };
+  try {
+    mkdirSync(main);
+    git(main, "init", "-q", "-b", "main");
+    git(main, "commit", "-q", "--allow-empty", "-m", "init");
+    git(main, "worktree", "add", "-q", wt, "-b", "feature");
+    fn({ main, wt, session });
+  } finally {
+    for (const id of sessions) disarmGuard(id, { dirName: GUARD_DIR });
+    rmSync(base, { recursive: true, force: true });
+  }
+}
+
+const decisionOf = (out) => (out === "" ? null : JSON.parse(out).hookSpecificOutput.permissionDecision);
+
+test("worktree ガードはスキル起動で装填され、本物の worktree で (a)(b)(c) を判定する", () => {
+  withRepo(({ main, wt, session }) => {
+    const sid = session("skill");
+    const skill = { session_id: sid, cwd: wt, tool_name: "Skill", tool_input: { skill: "kiai-sp:brainstorming" } };
+    assert.equal(runHook("worktree-guard", skill), "");
+
+    const bash = (cwd, command) =>
+      runHook("worktree-guard", { session_id: sid, cwd, tool_name: "Bash", tool_input: { command } });
+    const denied = bash(wt, `git -C ${main} commit --allow-empty -m x`);
+    assert.equal(decisionOf(denied), "deny");
+    assert.match(denied, /ExitWorktree/);
+    assert.equal(bash(wt, `git -C ${main} log`), "");
+    assert.equal(bash(wt, "git commit --allow-empty -m x"), "");
+    assert.equal(bash(wt, "git push"), "");
+    assert.equal(decisionOf(bash(main, "git push")), "ask");
+
+    const write = (agent_id, file_path) =>
+      runHook("worktree-guard", { session_id: sid, cwd: wt, agent_id, tool_name: "Write", tool_input: { file_path } });
+    assert.equal(decisionOf(write("ag1", join(main, "a.txt"))), "deny");
+    assert.equal(write("ag1", join(wt, "a.txt")), "");
+    assert.equal(write(undefined, join(main, "a.txt")), "");
+  });
+});
+
+test("worktree ガードは /kiai-sp: で始まる発話でも装填され、装填の無い会話では何も止めない", () => {
+  withRepo(({ main, wt, session }) => {
+    const command = `git -C ${main} commit --allow-empty -m x`;
+    const bash = (sid) =>
+      runHook("worktree-guard", { session_id: sid, cwd: wt, tool_name: "Bash", tool_input: { command } });
+
+    assert.equal(bash(session("absent")), "");
+
+    const sid = session("prompt");
+    const prompt = { session_id: sid, cwd: wt, hook_event_name: "UserPromptSubmit", prompt: "/kiai-sp:subagent-driven-development plan.md" };
+    assert.equal(runHook("worktree-guard", prompt), "");
+    assert.equal(decisionOf(bash(sid)), "deny");
+  });
 });

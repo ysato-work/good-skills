@@ -25,6 +25,7 @@ Subagent (general-purpose):
     | YAGNI | Unrequested features, over-engineering |
     | 決定事項 coverage | Requirements in the spec with no matching entry in `## 決定事項` |
     | 証拠 quality | `証拠` fields that paraphrase instead of quoting, or sit empty |
+    | 7節が揃っているか | Missing sections among 課題 / 解決策 / 利用者の望み / 実装の決め事 / テストの決め事 / やらないこと / 補足 |
 
     ## Calibration
 
@@ -32,6 +33,9 @@ Subagent (general-purpose):
     A missing section, a contradiction, or a requirement so ambiguous it could be
     interpreted two different ways — those are issues. Minor wording improvements,
     stylistic preferences, and "sections less detailed than others" are not.
+
+    This check applies only to specs written after 2026-10-12. Older specs are not
+    judged against it.
 
     Approve unless there are serious gaps that would lead to a flawed plan.
 

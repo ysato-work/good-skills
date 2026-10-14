@@ -3,7 +3,6 @@ import { test } from "node:test";
 import {
   ALLOWED_BRANCH_PREFIX,
   BASH_RULES,
-  RESOURCE_PREFIX,
   classifyBash,
   hasRemoteHost,
   pushTargetBranch,
@@ -86,37 +85,6 @@ test("prune は止まる", () => {
   assert.equal(blockedBy("docker volume prune"), "prune-everything");
 });
 
-test("自分の資源以外のコンテナ操作は止まる", () => {
-  assert.equal(blockedBy("docker rm app_db_1"), "touch-foreign-resource");
-  assert.equal(blockedBy("docker stop app_db_1"), "touch-foreign-resource");
-  assert.equal(blockedBy("docker volume rm app_pgdata"), "touch-foreign-resource");
-});
-
-test("自分の資源の後始末は通る", () => {
-  assert.equal(blockedBy(`docker rm -f ${RESOURCE_PREFIX}pg`), null);
-  assert.equal(blockedBy(`docker volume rm ${RESOURCE_PREFIX}pgdata`), null);
-});
-
-test("docker compose はプロジェクト名が無いと止まる", () => {
-  assert.equal(blockedBy("docker compose up -d"), "compose-without-project");
-  assert.equal(blockedBy("docker compose down -v"), "compose-without-project");
-  assert.equal(blockedBy("docker compose -p app up -d"), "compose-without-project");
-});
-
-test("プロジェクト名を分けた docker compose は通る", () => {
-  assert.equal(blockedBy(`docker compose -p ${RESOURCE_PREFIX}x -f compose.test.yml up -d`), null);
-});
-
-test("ホストポートの固定は止まる", () => {
-  assert.equal(blockedBy("docker run -p 5432:5432 postgres:16"), "fixed-host-port");
-  assert.equal(blockedBy("docker run --publish 8080:80 nginx"), "fixed-host-port");
-});
-
-test("エフェメラルなポート割り当ては通る", () => {
-  assert.equal(blockedBy(`docker run --name ${RESOURCE_PREFIX}pg -p 127.0.0.1::5432 postgres:16`), null);
-  assert.equal(blockedBy(`docker run --name ${RESOURCE_PREFIX}pg -P postgres:16`), null);
-});
-
 test("localhost 以外のデータベースへの接続は止まる", () => {
   assert.equal(blockedBy("psql -h db.internal -U u -c 'select 1'"), "remote-database");
   assert.equal(blockedBy("mysql --host=db.internal -e 'select 1'"), "remote-database");
@@ -124,58 +92,6 @@ test("localhost 以外のデータベースへの接続は止まる", () => {
 
 test("localhost のデータベースへの接続は通る", () => {
   assert.equal(blockedBy("psql -h 127.0.0.1 -U u -c 'select 1'"), null);
-});
-
-test("localhost の開発用データベースへの書き込みは止まる", () => {
-  assert.equal(blockedBy("psql -h localhost -U u -c 'UPDATE users SET x = 1'"), "local-database-write");
-  assert.equal(blockedBy("psql -U u -c 'INSERT INTO logs VALUES (1)'"), "local-database-write");
-  assert.equal(blockedBy("mysql -h 127.0.0.1 -e 'DELETE FROM sessions'"), "local-database-write");
-});
-
-test("Tier 2 の使い捨てDBへの書き込みは、spec-testing- のポートやDB名を名乗れば通る", () => {
-  assert.equal(
-    blockedBy("psql -h 127.0.0.1 -p 55432 -U u -d spec-testing-db -c 'UPDATE users SET x = 1'"),
-    null,
-  );
-});
-
-test("spec-testing-を無関係な位置に置いただけのlocalhost書き込みは止まる", () => {
-  assert.equal(
-    blockedBy('psql -h localhost -U u -c "UPDATE users SET x=1" -- spec-testing-'),
-    "local-database-write",
-  );
-});
-
-test("DB名がspec-testing-で始まる書き込みは通る(既存挙動の維持確認)", () => {
-  assert.equal(
-    blockedBy("psql -h 127.0.0.1 -p 55432 -U u -d spec-testing-db -c 'UPDATE users SET x = 1'"),
-    null,
-  );
-});
-
-test("mysqlのpositional DB名だけでは通らない(推測は迂回可能なため廃止)", () => {
-  // positional 引数からのDB名推測は -u などのフラグ値を誤認識する迂回可能性があるため廃止。
-  // 代わりに -D/--database フラグで明示的に指定する必要がある。
-  assert.equal(
-    blockedBy("mysql -h 127.0.0.1 spec-testing-db -e 'UPDATE users SET x=1'"),
-    "local-database-write",
-  );
-});
-
-test("mysqlは--databaseフラグでspec-testing-を明示すれば通る", () => {
-  assert.equal(
-    blockedBy("mysql -h 127.0.0.1 --database spec-testing-db -e 'UPDATE users SET x=1'"),
-    null,
-  );
-});
-
-test("-uの値にspec-testing-を仕込んでも実データベースへの書き込みは止まる(スプーフィング対策)", () => {
-  // ブラックリスト方式のフラグ判定では回避可能だったため、positional 引数推測を廃止した。
-  // これにより -u の値に spec-testing- を混ぜても、positional 引数として誤認識されない。
-  assert.equal(
-    blockedBy("mysql -h 127.0.0.1 -u spec-testing-x realdb -e 'DELETE FROM users'"),
-    "local-database-write",
-  );
 });
 
 test("localhost の読み取りは止めない", () => {

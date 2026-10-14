@@ -23,11 +23,10 @@
  *   decideStatus({ reported, evidence, attempts, maxAttempts })
  *   applyResult(artifactDir, caseId, result, opts)
  */
-import { existsSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { MAX_ATTEMPTS } from "../../../lib/spec-testing/constants.mjs";
 import { readCases, writeCases } from "../../../lib/spec-testing/ledger.mjs";
-import { casesPath, evidenceDir } from "../../../lib/spec-testing/paths.mjs";
+import { casesPath } from "../../../lib/spec-testing/paths.mjs";
+import { checkCommandsRecorded, checkReferencedLogsExist } from "../../../lib/spec-testing/evidence-check.mjs";
 
 /** 実施フェーズが書いてよい status */
 export const RESULT_STATUSES = ["pass", "fail", "error"];
@@ -41,9 +40,9 @@ export function assertResultStatus(status) {
 }
 
 export function hasEvidence(artifactDir, caseId) {
-  const path = join(evidenceDir(artifactDir, caseId), "commands.md");
-  if (!existsSync(path)) return false;
-  return statSync(path).size > 0;
+  if (!checkCommandsRecorded(artifactDir, caseId).ok) return false;
+  if (!checkReferencedLogsExist(artifactDir, caseId).ok) return false;
+  return true;
 }
 
 export function decideStatus({ reported, evidence, attempts, maxAttempts }) {

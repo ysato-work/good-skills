@@ -63,7 +63,16 @@ export function decide({ state, checkCode, advanced = 0, inFlight = 0, delivered
 
   // 移譲が成立している間は「終了」ではなく「待機」である。ここでブロックしても
   // 待つための埋め草を書かせるだけで、台帳は進まない。
-  if (inFlight > 0) return { action: "defer", reason: "バックグラウンド作業を待っている" };
+  // ただし defer が続いてバックグラウンド作業が終わらないと永久保留になる。
+  // noProgressTurns の上限で stop に切り替えて自分から降りる (recordTurn が
+  // deferred=true でも noProgressTurns を回すのでこの判定に届く)
+  if (inFlight > 0) {
+    const deferTurns = state.noProgressTurns + 1;
+    if (deferTurns >= NO_PROGRESS_MAX_TURNS) {
+      return { action: "stop", reason: `バックグラウンド待ちが ${deferTurns} ターン続いている` };
+    }
+    return { action: "defer", reason: "バックグラウンド作業を待っている" };
+  }
 
   if (checkCode === 0) {
     if (state.phase === "execution" && !delivered) {

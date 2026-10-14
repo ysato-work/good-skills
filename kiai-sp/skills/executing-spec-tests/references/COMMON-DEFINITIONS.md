@@ -38,12 +38,9 @@
 
 ## エージェント
 
-| label | subagent_type | model |
-|---|---|---|
-| case-runner | `kiai-sp:executing-spec-tests:case-runner` | sonnet |
-
-定義は `kiai-sp/agents/executing-spec-tests/case-runner.md` にある。Phase 0 冒頭で
-存在を確認し、無ければエラーで停止する。
+Workflow が起動する各エージェントの定義は `kiai-sp/agents/executing-spec-tests/`
+以下にある。呼ばれ方は `workflow.mjs` に集約されている。Phase 0 冒頭で
+`batch-runner.md` の存在を確認し、無ければエラーで停止する。
 
 ## 依存ツール
 
@@ -53,7 +50,6 @@
 ## 参照する外部の文書
 
 - `kiai-sp/lib/spec-testing/DATA-CONTRACT.md` — 台帳の形。Phase 0 で読む
-- `kiai-sp/lib/spec-testing/TIERS.md` — 環境の 3 階層。Phase 1 で読む
 
 ## 横断制約
 

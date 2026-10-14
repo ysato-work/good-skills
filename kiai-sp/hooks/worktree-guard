@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# PreToolUse / UserPromptSubmit hook — kiai-sp 起動中の worktree 外操作と trunk 系での push を止める
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+exec node "${PLUGIN_ROOT}/lib/worktree-guard.mjs"

@@ -171,12 +171,14 @@ test("停止報告には直近の試行内容が入る", () => {
   });
 });
 
-test("成果物ディレクトリが見つからなければブロックしない", () => {
+test("装填中に成果物ディレクトリが見つからなければブロックする (fail-safe)", () => {
   const root = mkdtempSync(join(tmpdir(), "completion-hook-noart-"));
   const repo = mkdtempSync(join(tmpdir(), "completion-hook-norepo-"));
   try {
     armCompletion("s1", { phase: "execution", root });
-    assert.equal(handleVerify({ session_id: "s1", cwd: repo }, { root }), null);
+    const out = handleVerify({ session_id: "s1", cwd: repo }, { root });
+    assert.equal(out.decision, "block");
+    assert.match(out.reason, /成果物ディレクトリ/);
   } finally {
     rmSync(root, { recursive: true, force: true });
     rmSync(repo, { recursive: true, force: true });
